@@ -64,8 +64,8 @@ the workflow, which calls `Publish.ps1` using a repository secret.
 1. Bump `ModuleVersion` in [Infrastructure.Secrets/Infrastructure.Secrets.psd1](Infrastructure.Secrets/Infrastructure.Secrets.psd1)
 2. Commit and push, then tag:
    ```powershell
-   git tag v1.0.1
-   git push origin v1.0.1
+   git tag 1.0.1
+   git push origin 1.0.1
    ```
 
 The `v*` tag triggers [.github/workflows/publish.yml](.github/workflows/publish.yml),
