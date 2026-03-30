@@ -1,0 +1,16 @@
+name: Publish to PSGallery
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+jobs:
+  publish:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Publish module
+        shell: pwsh
+        run: .\Publish.ps1 -ApiKey ${{ secrets.PSGALLERY_API_KEY }}
