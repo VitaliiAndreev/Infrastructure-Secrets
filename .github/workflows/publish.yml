@@ -6,7 +6,11 @@ on:
       - '[0-9]*'
 
 jobs:
+  test:
+    uses: ./.github/workflows/test.yml
+
   publish:
+    needs: test
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v4
