@@ -8,7 +8,7 @@ on:
   workflow_call:
 
 jobs:
-  test-ps51:
+  ci-ps51:
     name: CI (PowerShell 5.1)
     runs-on: windows-latest
     steps:
@@ -25,7 +25,7 @@ jobs:
           name: test-results-ps51
           path: TestResults.xml
 
-  test-ps7:
+  ci-ps7:
     name: CI (PowerShell 7)
     runs-on: windows-latest
     steps:
