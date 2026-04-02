@@ -5,7 +5,7 @@ function Initialize-InfrastructureVault {
         vault, and stores a JSON config string as an encrypted secret.
 
     .DESCRIPTION
-        Idempotent — safe to re-run to update the stored config.
+        Idempotent - safe to re-run to update the stored config.
 
         The SecretStore vault is AES-256 encrypted and scoped to the current
         Windows user account. No secrets are written to disk in plain text.
@@ -89,11 +89,11 @@ function Initialize-InfrastructureVault {
     Write-Host "Ensuring NuGet package provider ..." -ForegroundColor Cyan
     Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 `
         -Scope CurrentUser -Force -ForceBootstrap | Out-Null
-    Write-Host "✓ NuGet provider ready." -ForegroundColor Green
+    Write-Host "OK - NuGet provider ready." -ForegroundColor Green
 
     # -----------------------------------------------------------------------
     # 4. Install SecretManagement modules if not already present
-    #    Install all before importing any — importing SecretManagement before
+    #    Install all before importing any - importing SecretManagement before
     #    SecretStore is installed causes a "module in use" warning when
     #    PowerShellGet tries to satisfy SecretStore's dependency on it.
     # -----------------------------------------------------------------------
@@ -108,10 +108,10 @@ function Initialize-InfrastructureVault {
             Write-Host "Installing module: $mod ..." -ForegroundColor Cyan
             Install-Module -Name $mod -Repository PSGallery `
                 -Scope CurrentUser -Force
-            Write-Host "✓ Installed $mod." -ForegroundColor Green
+            Write-Host "OK - Installed $mod." -ForegroundColor Green
         }
         else {
-            Write-Host "✓ Module already present: $mod" -ForegroundColor Green
+            Write-Host "OK - Module already present: $mod" -ForegroundColor Green
         }
     }
 
@@ -126,7 +126,7 @@ function Initialize-InfrastructureVault {
     #    No separate vault password is required unless -RequireVaultPassword.
     #
     #    Detection: call Get-SecretStoreConfiguration first (official API).
-    #    On an uninitialised store it throws — treat as "needs init".
+    #    On an uninitialised store it throws - treat as "needs init".
     #    On a Password-auth store the cmdlet may also throw in some module
     #    versions, so we fall back to reading the storeconfig file directly.
     #
@@ -156,7 +156,7 @@ function Initialize-InfrastructureVault {
     }
     catch {
         # Store not initialised, or Password-auth store on an older module
-        # version where the cmdlet throws — fall through to file fallback.
+        # version where the cmdlet throws - fall through to file fallback.
     }
 
     if ($null -eq $currentAuth) {
@@ -207,11 +207,11 @@ function Initialize-InfrastructureVault {
         finally {
             $ConfirmPreference = $savedPref
         }
-        Write-Host "✓ SecretStore initialised (Authentication=$authMode)." `
+        Write-Host "OK - SecretStore initialised (Authentication=$authMode)." `
             -ForegroundColor Green
     }
     else {
-        Write-Host "✓ SecretStore already configured (Authentication=$authMode)." `
+        Write-Host "OK - SecretStore already configured (Authentication=$authMode)." `
             -ForegroundColor Green
     }
 
@@ -225,20 +225,20 @@ function Initialize-InfrastructureVault {
             -Name $VaultName `
             -ModuleName Microsoft.PowerShell.SecretStore `
             -DefaultVault
-        Write-Host "✓ Vault '$VaultName' registered." -ForegroundColor Green
+        Write-Host "OK - Vault '$VaultName' registered." -ForegroundColor Green
     }
     else {
-        Write-Host "✓ Vault '$VaultName' already registered." -ForegroundColor Green
+        Write-Host "OK - Vault '$VaultName' already registered." -ForegroundColor Green
     }
 
     # -----------------------------------------------------------------------
-    # 7. Store the secret (Set-Secret overwrites — safe to re-run)
+    # 7. Store the secret (Set-Secret overwrites - safe to re-run)
     # -----------------------------------------------------------------------
 
     Write-Host "Storing secret '$SecretName' in vault '$VaultName' ..." `
         -ForegroundColor Cyan
     Set-Secret -Vault $VaultName -Name $SecretName -Secret $ConfigJson
-    Write-Host "✓ Secret stored." -ForegroundColor Green
+    Write-Host "OK - Secret stored." -ForegroundColor Green
 
     # -----------------------------------------------------------------------
     # 8. Round-trip verification
@@ -246,6 +246,5 @@ function Initialize-InfrastructureVault {
 
     $readBack = Get-Secret -Vault $VaultName -Name $SecretName -AsPlainText
     $null = $readBack | ConvertFrom-Json   # throws if corrupted
-    Write-Host "✓ Round-trip verified — '$SecretName' readable from vault." `
-        -ForegroundColor Green
+    Write-Host "OK - '$SecretName' readable from vault." -ForegroundColor Green
 }

@@ -4,7 +4,7 @@
 
 .DESCRIPTION
     Provides Initialize-InfrastructureVault: a single function that handles all
-    SecretManagement boilerplate — NuGet provider, module installation,
+    SecretManagement boilerplate - NuGet provider, module installation,
     SecretStore configuration, vault registration, and secret storage.
 
     Consuming repos call this once per machine from their own thin
