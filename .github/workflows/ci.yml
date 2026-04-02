@@ -1,4 +1,4 @@
-name: Test
+name: CI
 
 on:
   push:
@@ -9,7 +9,7 @@ on:
 
 jobs:
   test-ps51:
-    name: Test (PowerShell 5.1)
+    name: CI (PowerShell 5.1)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
@@ -26,7 +26,7 @@ jobs:
           path: TestResults.xml
 
   test-ps7:
-    name: Test (PowerShell 7)
+    name: CI (PowerShell 7)
     runs-on: windows-latest
     steps:
       - uses: actions/checkout@v5
