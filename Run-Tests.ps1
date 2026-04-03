@@ -26,7 +26,7 @@ $pester = Get-Module -ListAvailable -Name Pester |
     Select-Object -First 1
 
 if (-not $pester) {
-    Write-Host 'Pester 5 not found — installing ...' -ForegroundColor Cyan
+    Write-Host 'Pester 5 not found - installing ...' -ForegroundColor Cyan
     Install-Module -Name Pester -MinimumVersion 5.0 `
         -Scope CurrentUser -Force -SkipPublisherCheck
 }

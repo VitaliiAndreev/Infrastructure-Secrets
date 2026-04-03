@@ -16,7 +16,7 @@ Shared PowerShell module for infrastructure secret vault setup across the
 
 ## Overview
 
-Provides `Initialize-InfrastructureVault` — a single function that handles all
+Provides `Initialize-InfrastructureVault` - a single function that handles all
 PowerShell SecretManagement boilerplate:
 
 - NuGet provider check
@@ -35,7 +35,7 @@ project-specific validation logic.
 
 ## Installation
 
-Consuming repos install automatically from PSGallery — no manual step needed.
+Consuming repos install automatically from PSGallery - no manual step needed.
 
 To install manually:
 
@@ -56,7 +56,7 @@ source instead of PSGallery.
 
 ## Publishing
 
-Publishing is automated via GitHub Actions — pushing a version tag triggers
+Publishing is automated via GitHub Actions - pushing a version tag triggers
 the workflow, which calls `Publish.ps1` using a repository secret.
 
 **To ship a new version:**
@@ -72,7 +72,7 @@ The `v*` tag triggers [.github/workflows/publish.yml](.github/workflows/publish.
 which publishes to PSGallery automatically.
 
 **One-time setup:** add your PSGallery API key as a repository secret named
-`PSGALLERY_API_KEY` under Settings → Secrets and variables → Actions.
+`PSGALLERY_API_KEY` under Settings -> Secrets and variables -> Actions.
 Generate a key at [powershellgallery.com/account/apikeys](https://www.powershellgallery.com/account/apikeys).
 
 ---
@@ -93,7 +93,7 @@ Initialize-InfrastructureVault `
         param($json)
         $entries = @($json | ConvertFrom-Json)
         if ($entries.Count -eq 0) { throw 'Config contains no entries.' }
-        Write-Host "✓ $($entries.Count) entry/entries validated."
+        Write-Host "OK - $($entries.Count) entry/entries validated."
     }
 ```
 
@@ -106,14 +106,14 @@ after a basic parse check only.
 
 ### `Initialize-InfrastructureVault`
 
-| Parameter             | Type          | Required | Description                                                              |
-|-----------------------|---------------|----------|--------------------------------------------------------------------------|
-| `-VaultName`          | string        | Yes      | SecretStore vault name to register, e.g. `'GHRunners'`                  |
-| `-SecretName`         | string        | Yes      | Secret name within the vault, e.g. `'GHRunnersConfig'`                  |
-| `-ConfigFile`         | string        | Yes*     | Path to a JSON file — read at runtime, not modified                      |
-| `-ConfigJson`         | string        | Yes*     | Raw JSON string — mutually exclusive with `-ConfigFile`                  |
-| `-RequireVaultPassword` | switch      | No       | Require an interactive vault password each session (shared machines)     |
-| `-Validate`           | scriptblock   | No       | Project-specific validation; receives the JSON string; throw to abort    |
+| Parameter               | Type        | Required | Description                                                           |
+|-------------------------|-------------|----------|-----------------------------------------------------------------------|
+| `-VaultName`            | string      | Yes      | SecretStore vault name to register, e.g. `'GHRunners'`               |
+| `-SecretName`           | string      | Yes      | Secret name within the vault, e.g. `'GHRunnersConfig'`               |
+| `-ConfigFile`           | string      | Yes*     | Path to a JSON file - read at runtime, not modified                   |
+| `-ConfigJson`           | string      | Yes*     | Raw JSON string - mutually exclusive with `-ConfigFile`               |
+| `-RequireVaultPassword` | switch      | No       | Require an interactive vault password each session (shared machines)  |
+| `-Validate`             | scriptblock | No       | Project-specific validation; receives the JSON string; throw to abort |
 
 \* Exactly one of `-ConfigFile` or `-ConfigJson` is required.
 
