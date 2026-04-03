@@ -26,7 +26,7 @@ $pester = Get-Module -ListAvailable -Name Pester |
     Select-Object -First 1
 
 if (-not $pester) {
-    Write-Host 'Pester 5 not found — installing ...' -ForegroundColor Cyan
+    Write-Host 'Pester 5 not found - installing ...' -ForegroundColor Cyan
     Install-Module -Name Pester -MinimumVersion 5.0 `
         -Scope CurrentUser -Force -SkipPublisherCheck
 }
@@ -36,6 +36,17 @@ Import-Module Pester -MinimumVersion 5.0
 # ---------------------------------------------------------------------------
 # Run tests
 # ---------------------------------------------------------------------------
+
+# Guard against running with no test files - Pester throws rather than
+# returning a result object, which breaks the FailedCount check below.
+$testFiles = Get-ChildItem -Path "$PSScriptRoot\Tests" `
+    -Filter '*.Tests.ps1' -Recurse -ErrorAction SilentlyContinue
+
+if (-not $testFiles) {
+    Write-Host 'No test files found under Tests\ - nothing to run.' `
+        -ForegroundColor Yellow
+    exit 0
+}
 
 $config = New-PesterConfiguration
 $config.Run.Path           = "$PSScriptRoot\Tests"

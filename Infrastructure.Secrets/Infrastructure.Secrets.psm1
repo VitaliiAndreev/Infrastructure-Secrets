@@ -19,6 +19,5 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = 'Stop'
 
 . "$PSScriptRoot\Public\Initialize-InfrastructureVault.ps1"
-. "$PSScriptRoot\Public\Assert-ConfigFields.ps1"
 
-Export-ModuleMember -Function Initialize-InfrastructureVault, Assert-ConfigFields
+Export-ModuleMember -Function Initialize-InfrastructureVault

@@ -15,6 +15,18 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
+      - name: Check PSGALLERY_API_KEY secret
+        shell: pwsh
+        env:
+          API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: |
+          if ([string]::IsNullOrWhiteSpace($env:API_KEY)) {
+            Write-Error "PSGALLERY_API_KEY secret is not set. Add it under Settings -> Secrets and variables -> Actions."
+            exit 1
+          }
+
       - name: Publish module
         shell: pwsh
-        run: .\Publish.ps1 -ApiKey ${{ secrets.PSGALLERY_API_KEY }}
+        env:
+          API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
+        run: .\Publish.ps1 -ApiKey $env:API_KEY
