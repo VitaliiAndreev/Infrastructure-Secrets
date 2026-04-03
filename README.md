@@ -64,12 +64,12 @@ the workflow, which calls `Publish.ps1` using a repository secret.
 1. Bump `ModuleVersion` in [Infrastructure.Secrets/Infrastructure.Secrets.psd1](Infrastructure.Secrets/Infrastructure.Secrets.psd1)
 2. Commit and push, then tag:
    ```powershell
-   git tag 1.0.1
-   git push origin 1.0.1
+   git tag 2.0.0
+   git push origin 2.0.0
    ```
 
-The `v*` tag triggers [.github/workflows/publish.yml](.github/workflows/publish.yml),
-which publishes to PSGallery automatically.
+The tag triggers [.github/workflows/publish.yml](.github/workflows/publish.yml),
+which runs CI and then publishes to PSGallery automatically.
 
 **One-time setup:** add your PSGallery API key as a repository secret named
 `PSGALLERY_API_KEY` under Settings -> Secrets and variables -> Actions.
@@ -123,9 +123,15 @@ after a basic parse check only.
 
 ```
 Infrastructure-Secrets/
-├── Infrastructure.Secrets/
-│   ├── Infrastructure.Secrets.psm1   # Module implementation
-│   └── Infrastructure.Secrets.psd1   # Module manifest
-├── Install.ps1             # Copies module to user's PS module path
-└── README.md
+|- Infrastructure.Secrets/
+|  |- Public/
+|  |  `- Initialize-InfrastructureVault.ps1
+|  |- Infrastructure.Secrets.psm1   # Dot-sources Public\ and exports functions
+|  `- Infrastructure.Secrets.psd1   # Module manifest (version, GUID, exports)
+|- Tests/
+|  `- Initialize-InfrastructureVault.Tests.ps1
+|- Install.ps1      # Installs from source for local development
+|- Publish.ps1      # Publishes to PSGallery (called by CI)
+|- Run-Tests.ps1    # Runs Pester tests (called by CI)
+`- README.md
 ```
