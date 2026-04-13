@@ -56,20 +56,16 @@ source instead of PSGallery.
 
 ## Publishing
 
-Publishing is automated via GitHub Actions - pushing a version tag triggers
-the workflow, which calls `Publish.ps1` using a repository secret.
+Publishing is fully automated via GitHub Actions.
 
 **To ship a new version:**
 
 1. Bump `ModuleVersion` in [Infrastructure.Secrets/Infrastructure.Secrets.psd1](Infrastructure.Secrets/Infrastructure.Secrets.psd1)
-2. Commit and push, then tag:
-   ```powershell
-   git tag 2.0.0
-   git push origin 2.0.0
-   ```
+2. Open a PR, get it reviewed and merged
 
-The tag triggers [.github/workflows/publish.yml](.github/workflows/publish.yml),
-which runs CI and then publishes to PSGallery automatically.
+On merge, [.github/workflows/tag.yml](.github/workflows/tag.yml) runs CI,
+creates a matching git tag, then publishes to PSGallery automatically via
+the shared workflow in `Infrastructure-Common`. No manual tagging step required.
 
 **One-time setup:** add your PSGallery API key as a repository secret named
 `PSGALLERY_API_KEY` under Settings -> Secrets and variables -> Actions.
