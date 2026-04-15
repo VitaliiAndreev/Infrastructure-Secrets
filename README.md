@@ -1,7 +1,7 @@
 # Infrastructure-Secrets
 
-Shared PowerShell module for infrastructure secret vault setup across the
-`Infrastructure-*` polyrepo family.
+Shared PowerShell module for infrastructure secret vault setup and provider-based
+runtime read/write across the `Infrastructure-*` polyrepo family.
 
 ## Index
 
@@ -10,14 +10,19 @@ Shared PowerShell module for infrastructure secret vault setup across the
 - [Publishing](#publishing)
 - [Usage](#usage)
 - [API reference](#api-reference)
+  - [Initialize-InfrastructureVault](#initialize-infrastructurevault)
+  - [Get-InfrastructureSecret](#get-infrastructuresecret)
+  - [Set-InfrastructureSecret](#set-infrastructuresecret)
 - [Repo structure](#repo-structure)
 
 ---
 
 ## Overview
 
-Provides `Initialize-InfrastructureVault` - a single function that handles all
-PowerShell SecretManagement boilerplate:
+Provides two groups of functions:
+
+**Vault setup (one-time, per machine):**
+`Initialize-InfrastructureVault` handles all PowerShell SecretManagement boilerplate:
 
 - NuGet provider check
 - `Microsoft.PowerShell.SecretManagement` + `Microsoft.PowerShell.SecretStore`
@@ -30,6 +35,12 @@ PowerShell SecretManagement boilerplate:
 Consuming repos call this once per machine from their own thin
 `setup-secrets.ps1`, passing only the vault name, secret name, and any
 project-specific validation logic.
+
+**Runtime read/write (provider-based):**
+`Get-InfrastructureSecret` / `Set-InfrastructureSecret` are thin dispatch
+functions that route to whichever backend was registered by a `Use-*Provider`
+call. Swapping secret backends requires only changing which `Use-*Provider`
+is called; no other code changes.
 
 ---
 
@@ -96,6 +107,18 @@ Initialize-InfrastructureVault `
 The `-Validate` scriptblock is optional. If omitted, the JSON is stored
 after a basic parse check only.
 
+To read or write secrets at runtime, register a provider once per session,
+then call the dispatch functions:
+
+```powershell
+Import-Module Infrastructure.Secrets -ErrorAction Stop
+
+Use-MicrosoftPowerShellSecretStoreProvider
+
+$json  = Get-InfrastructureSecret -VaultName 'MyVault' -SecretName 'MyConfig'
+Set-InfrastructureSecret -VaultName 'MyVault' -SecretName 'MyConfig' -Value $json
+```
+
 ---
 
 ## API reference
@@ -115,15 +138,47 @@ after a basic parse check only.
 
 ---
 
+### `Get-InfrastructureSecret`
+
+| Parameter     | Type   | Required | Description                        |
+|---------------|--------|----------|------------------------------------|
+| `-VaultName`  | string | Yes      | Name of the vault to read from     |
+| `-SecretName` | string | Yes      | Name of the secret within the vault |
+
+Returns the secret value as a plain-text string. Throws if no provider is
+registered or if the secret is not found.
+
+---
+
+### `Set-InfrastructureSecret`
+
+| Parameter     | Type   | Required | Description                                           |
+|---------------|--------|----------|-------------------------------------------------------|
+| `-VaultName`  | string | Yes      | Name of the vault to write to                         |
+| `-SecretName` | string | Yes      | Name of the secret within the vault                   |
+| `-Value`      | string | Yes      | Plain-text value; the provider encrypts it at rest    |
+
+Creates the secret if absent; overwrites if present. The value is never
+written to any output stream. Throws if no provider is registered.
+
+---
+
 ## Repo structure
 
 ```
 Infrastructure-Secrets/
 |- Infrastructure.Secrets/
+|  |- Private/
+|  |  |- Assert-SafeSecretIdentifier.ps1   # Whitelist-validates vault/secret names
+|  |  |- Assert-SecretProviderValid.ps1    # Validates provider hashtable structure
+|  |  |- Assert-DispatchPreconditions.ps1  # Shared guard for both dispatchers
+|  |  `- Register-SecretProvider.ps1       # ReadOnly enforcement and idempotency
 |  |- Public/
-|  |  `- Initialize-InfrastructureVault.ps1
-|  |- Infrastructure.Secrets.psm1   # Dot-sources Public\ and exports functions
-|  `- Infrastructure.Secrets.psd1   # Module manifest (version, GUID, exports)
+|  |  |- Initialize-InfrastructureVault.ps1
+|  |  |- Get-InfrastructureSecret.ps1
+|  |  |- Set-InfrastructureSecret.ps1
+|  |- Infrastructure.Secrets.psm1          # Dot-sources all files; exports functions
+|  `- Infrastructure.Secrets.psd1          # Module manifest (version, GUID, exports)
 |- Tests/               # Pester unit tests
 |- Install.ps1      # Installs from source for local development
 |- Publish.ps1      # Publishes to PSGallery (called by CI)

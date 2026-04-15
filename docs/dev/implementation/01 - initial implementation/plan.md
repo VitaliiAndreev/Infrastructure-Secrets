@@ -16,98 +16,141 @@ These steps cover the runtime read/write path only.
 
 ## Step 1 - Provider dispatch
 
-**What:** Module-level provider state and the two public functions that
-dispatch to it.
+**What:** Module-level provider state, private helpers, and the two public
+dispatch functions. All files live under `Infrastructure.Secrets/`:
 
-A provider is a hashtable with two keys:
+```
+Private/
+  Assert-SafeSecretIdentifier.ps1
+  Assert-SecretProviderValid.ps1
+  Assert-DispatchPreconditions.ps1
+  Register-SecretProvider.ps1
+Public/
+  Get-InfrastructureSecret.ps1
+  Set-InfrastructureSecret.ps1
+```
+
+### Provider shape
+
+A provider is a hashtable with three mandatory keys:
 
 ```powershell
 @{
-    Get = [scriptblock]   # param($VaultName, $SecretName) -> [string]
-    Set = [scriptblock]   # param($VaultName, $SecretName, $Value) -> void
+    Name = [string]      # non-empty; used for idempotency and swap detection
+    Get  = [scriptblock] # param($VaultName, $SecretName) -> [string]
+    Set  = [scriptblock] # param($VaultName, $SecretName, $Value) -> void
 }
 ```
 
-The module holds one active provider in `$Script:SecretProvider`. Public
-functions dispatch through it:
+`Name` is not an authenticity check — a caller with session access can
+supply any string. It is an idempotency key and an accidental-swap guard.
+Scriptblock authenticity cannot be verified in PowerShell; the trust
+boundary is session access itself.
+
+### Private helpers
+
+**`Assert-SafeSecretIdentifier`** — validates that `$VaultName` and
+`$SecretName` match `^[A-Za-z0-9_\-\.]+$`. Rejects unsafe characters
+before they reach any provider, making injection impossible regardless of
+how a provider handles the values internally. `$Value` is not validated —
+secret content is arbitrary; providers must treat it as an opaque string.
+
+**`Assert-SecretProviderValid`** — validates that `$Script:SecretProvider`
+is a non-null hashtable with `Name` (non-empty string), `Get`
+(ScriptBlock), and `Set` (ScriptBlock). Catches both the no-provider case
+and any malformed value written directly to `$Script:SecretProvider`
+outside of a `Use-*Provider` function.
+
+**`Assert-DispatchPreconditions`** — calls both assertions above.
+Extracted to avoid duplicating the same two calls in both dispatcher
+functions.
+
+**`Register-SecretProvider`** — validates the provider, enforces
+idempotency and swap prevention, then stores it as ReadOnly:
+- Same `Name` already registered: clears ReadOnly, re-registers
+  (idempotent — safe to re-run setup scripts).
+- Different `Name` already registered: throws with a reload instruction.
+  Changing backends mid-session is not allowed; inconsistency between
+  secrets read from two different stores is the risk.
+- After storing: marks `$Script:SecretProvider` as `-Option ReadOnly` so
+  normal assignment (`$Script:SecretProvider = ...`) fails immediately.
+  `Set-Variable -Force` from inside the module scope still works — this
+  is the remaining trust boundary.
+
+### Public functions
+
+Both dispatcher functions are intentionally thin:
 
 ```powershell
-# Private state - one active provider per module session.
-$Script:SecretProvider = $null
-
 function Get-InfrastructureSecret {
-    param(
-        [Parameter(Mandatory)] [string] $VaultName,
-        [Parameter(Mandatory)] [string] $SecretName
-    )
-    if (-not $Script:SecretProvider) {
-        throw "No secret provider is active. Call Use-*Provider first."
-    }
+    param([string]$VaultName, [string]$SecretName)
+    Assert-DispatchPreconditions -VaultName $VaultName -SecretName $SecretName
     & $Script:SecretProvider.Get $VaultName $SecretName
 }
 
 function Set-InfrastructureSecret {
-    param(
-        [Parameter(Mandatory)] [string] $VaultName,
-        [Parameter(Mandatory)] [string] $SecretName,
-        [Parameter(Mandatory)] [string] $Value
-    )
-    if (-not $Script:SecretProvider) {
-        throw "No secret provider is active. Call Use-*Provider first."
-    }
+    param([string]$VaultName, [string]$SecretName, [string]$Value)
+    Assert-DispatchPreconditions -VaultName $VaultName -SecretName $SecretName
     & $Script:SecretProvider.Set $VaultName $SecretName $Value
 }
 ```
 
-Both functions propagate errors as terminating; consumers do not check
-return values for null. Secret values are never written to any output
-stream.
-
-**Why:** Decouples the public interface from any specific backend.
-Adding a new provider requires no changes to these functions — only a
-new `Use-*Provider` registration function (Step 2 defines the first one).
-The explicit "no provider active" error prevents silent null returns if a
-consumer forgets to register a provider.
+**Why:** All guard logic lives in named private helpers with their own
+comments and test surface. The dispatchers stay readable; the helpers stay
+independently testable.
 
 ```mermaid
 graph TD
-    subgraph Public["Infrastructure.Secrets (public)"]
+    subgraph Public["Public"]
         GIS[Get-InfrastructureSecret]
         SIS[Set-InfrastructureSecret]
-        UPR[Use-*Provider]
     end
-    subgraph Private["Infrastructure.Secrets (private)"]
-        SP[$Script:SecretProvider]
+    subgraph Private["Private"]
+        ADP[Assert-DispatchPreconditions]
+        ASI[Assert-SafeSecretIdentifier]
+        ASV[Assert-SecretProviderValid]
+        RSP[Register-SecretProvider]
+        SP[$Script:SecretProvider - ReadOnly after first registration]
     end
-    subgraph Backend["Secret backend"]
+    subgraph Backend["Backend"]
         B[provider scriptblocks]
     end
 
-    UPR -->|registers hashtable| SP
+    GIS -->|VaultName, SecretName| ADP
+    SIS -->|VaultName, SecretName| ADP
+    ADP --> ASI
+    ADP --> ASV
+    ASV --> SP
     GIS -->|dispatches .Get| SP
     SIS -->|dispatches .Set| SP
-    SP -->|calls scriptblock| B
+    SP --> B
+    RSP -->|Set-Variable ReadOnly| SP
 ```
 
 ---
 
 ## Step 2 - MicrosoftPowerShellSecretStore provider
 
-**What:** One public registration function that sets `$Script:SecretProvider`
-to a hashtable backed by `Microsoft.PowerShell.SecretStore` — a
-cross-platform PowerShell module that stores secrets in an encrypted local
-file. On Windows it uses DPAPI, scoping the encrypted file to the current
-Windows user account. It is not the Windows Credential Manager.
+**What:** One public registration function backed by
+`Microsoft.PowerShell.SecretStore` — a cross-platform PowerShell module
+that stores secrets in an encrypted local file. On Windows it uses DPAPI,
+scoping the encrypted file to the current Windows user account. It is not
+the Windows Credential Manager.
+
+The function builds a provider hashtable and passes it to
+`Register-SecretProvider`, which handles validation, ReadOnly enforcement,
+and idempotency:
 
 ```powershell
 function Use-MicrosoftPowerShellSecretStoreProvider {
-    $Script:SecretProvider = @{
-        Get = {
+    Register-SecretProvider -Provider @{
+        Name = 'MicrosoftPowerShellSecretStore'
+        Get  = {
             param($VaultName, $SecretName)
             Get-Secret -Vault $VaultName -Name $SecretName `
                 -AsPlainText -ErrorAction Stop
         }
-        Set = {
+        Set  = {
             param($VaultName, $SecretName, $Value)
             Set-Secret -Vault $VaultName -Name $SecretName `
                 -Secret $Value -ErrorAction Stop
@@ -116,30 +159,38 @@ function Use-MicrosoftPowerShellSecretStoreProvider {
 }
 ```
 
-A consumer script calls `Use-MicrosoftPowerShellSecretStoreProvider` once at startup before
-any `Get-InfrastructureSecret` / `Set-InfrastructureSecret` calls.
+A consumer script calls this once at startup before any
+`Get-InfrastructureSecret` / `Set-InfrastructureSecret` calls.
 
-Adding a new backend (e.g., Azure Key Vault) means adding a new
-`Use-AzureKeyVaultProvider` function with its own scriptblock hashtable.
-No existing code changes.
+Adding a new backend means adding a new `Use-*Provider` function that
+calls `Register-SecretProvider` with its own hashtable. No other code
+changes.
 
-**Why:** Each provider is an isolated, named, independently testable unit.
-Swapping backends is a change to which `Use-*Provider` is called — a
-one-line change at the consumer's call site, not an edit inside a shared
-function.
+**Why:** `Register-SecretProvider` centralises all registration logic —
+ReadOnly enforcement, idempotency, swap prevention — so each `Use-*Provider`
+function is a thin constructor with no guard duplication.
+
+**Provider contract for future implementations:** `$VaultName`,
+`$SecretName`, and `$Value` must be passed to backend cmdlets or processes
+via parameter binding, never via string interpolation or
+`Invoke-Expression`. `$Value` in particular must be treated as an opaque
+string and must never appear in a command argument list visible in
+`ps aux` or equivalent.
 
 ```mermaid
 graph TD
-    subgraph Providers["Provider registration functions"]
+    subgraph Public["Public"]
         USS[Use-MicrosoftPowerShellSecretStoreProvider]
         UAK[Use-AzureKeyVaultProvider ...]
     end
-    subgraph Private["$Script:SecretProvider"]
-        SP[active provider hashtable]
+    subgraph Private["Private"]
+        RSP[Register-SecretProvider]
+        SP[$Script:SecretProvider]
     end
 
-    USS -->|Get + Set scriptblocks| SP
-    UAK -.->|Get + Set scriptblocks| SP
+    USS -->|Name + Get + Set hashtable| RSP
+    UAK -.->|Name + Get + Set hashtable| RSP
+    RSP -->|Set-Variable ReadOnly| SP
 ```
 
 ---
@@ -149,41 +200,70 @@ graph TD
 ### Existing tests - no changes required
 
 `Initialize-InfrastructureVault.Tests.ps1` is unaffected. That function
-handles vault *setup* and calls `Get-Secret`/`Set-Secret` directly for
-its own round-trip verification — it does not use the provider abstraction
-and has no reason to. Its stubs and mocks remain valid as-is.
+handles vault *setup* and calls `Get-Secret`/`Set-Secret` directly — it
+does not use the provider abstraction and has no reason to. Its stubs and
+mocks remain valid as-is.
 
 ### New test file
 
-Add `Get-InfrastructureSecret.Tests.ps1` following the same structure as
-the existing test file:
+Add `Get-InfrastructureSecret.Tests.ps1`.
 
-- **`BeforeAll`** — dot-source the three new function files; declare
-  `function Get-Secret { param($Vault, $Name, [switch]$AsPlainText) }` and
-  `function Set-Secret { param($Vault, $Name, $Secret) }` as stubs, same
-  as the existing file. Pester requires a command to exist before it can
-  be mocked.
-- **`BeforeEach`** — reset `$Script:SecretProvider` to `$null` so each
-  test starts with no active provider.
+**`BeforeAll`** — dot-source all private and public function files; declare
+`function Get-Secret { param($Vault, $Name, [switch]$AsPlainText) }` and
+`function Set-Secret { param($Vault, $Name, $Secret) }` as stubs (same
+pattern as the existing file).
 
-Test cases:
+**`BeforeEach`** — reset provider state between tests. Because
+`$Script:SecretProvider` is ReadOnly after any registration, a plain
+assignment fails. Use `Set-Variable -Force` inside the module scope:
 
-- `Get-InfrastructureSecret` — throws when `$Script:SecretProvider` is
-  null; invokes `$Script:SecretProvider.Get` with the correct arguments
-  when a mock provider hashtable is injected directly.
-- `Set-InfrastructureSecret` — throws when `$Script:SecretProvider` is
-  null; invokes `$Script:SecretProvider.Set` with the correct arguments
-  when a mock provider hashtable is injected directly.
-- `Use-MicrosoftPowerShellSecretStoreProvider` — after calling it, `Get-InfrastructureSecret`
-  invokes `Get-Secret` with the expected `-Vault` and `-Name` arguments
-  (verified via `Should -Invoke`); `Set-InfrastructureSecret` invokes
-  `Set-Secret` with the expected arguments.
+```powershell
+BeforeEach {
+    & (Get-Module Infrastructure.Secrets) {
+        Set-Variable -Name SecretProvider -Value $null -Option None -Force
+    }
+}
+```
 
-**Why:** Dispatcher tests inject a fake hashtable directly — they verify
-routing logic without depending on any real backend. Provider tests verify
-that `Use-MicrosoftPowerShellSecretStoreProvider` wires the correct cmdlets with the correct
-arguments. Neither test set depends on the other. The stub pattern matches
-the existing file so new contributors have one consistent model to follow.
+**Helper for dispatcher tests** — dispatcher tests need a valid provider
+that passes `Assert-SecretProviderValid`. Define a factory inside the
+module scope so the hashtable structure is correct:
+
+```powershell
+function New-MockProvider {
+    param([string]$Name = 'MockProvider', [scriptblock]$GetResult = { 'mock' })
+    @{ Name = $Name; Get = $GetResult; Set = {} }
+}
+```
+
+Register it via `Register-SecretProvider` through the module scope to
+respect the ReadOnly mechanism.
+
+**Test cases:**
+
+- `Assert-SafeSecretIdentifier` — valid identifiers pass; identifiers with
+  special characters (`;`, `$`, spaces, etc.) throw with a message naming
+  the parameter.
+- `Assert-SecretProviderValid` — null throws; non-hashtable throws; missing
+  `Name` throws; blank `Name` throws; missing `Get`/`Set` throws; wrong
+  types for `Get`/`Set` throw; valid hashtable passes.
+- `Register-SecretProvider` — first registration succeeds and sets
+  ReadOnly; re-registration of same name is idempotent; different name
+  throws with reload instruction; direct assignment after registration
+  throws (because ReadOnly).
+- `Assert-DispatchPreconditions` — unsafe `VaultName` throws; unsafe
+  `SecretName` throws; null provider throws; valid inputs with valid
+  provider pass. Identifier and provider validation is tested here and
+  not repeated in the dispatcher tests below.
+- `Get-InfrastructureSecret` — dispatches `.Get` with correct `VaultName`
+  and `SecretName` arguments when a valid provider is registered.
+- `Set-InfrastructureSecret` — dispatches `.Set` with correct `VaultName`,
+  `SecretName`, and `Value` arguments; `$Value` with special characters
+  passes (not validated).
+- `Use-MicrosoftPowerShellSecretStoreProvider` — after calling, invoking
+  `Get-InfrastructureSecret` calls `Get-Secret` with expected `-Vault` and
+  `-Name`; invoking `Set-InfrastructureSecret` calls `Set-Secret` with
+  expected arguments.
 
 ```mermaid
 graph TD
@@ -191,9 +271,11 @@ graph TD
         ET[existing tests]
     end
     subgraph New["Get-InfrastructureSecret.Tests.ps1 (new)"]
-        TD[Dispatcher tests - inject mock hashtable]
+        TH[Helper tests - Assert-SafeSecretIdentifier, Assert-SecretProviderValid, Assert-DispatchPreconditions, Register-SecretProvider]
+        TD[Dispatcher tests - dispatch only, no validation re-test]
         TP[Provider tests - Mock Get-Secret / Set-Secret]
     end
-    TD -->|$Script:SecretProvider = mock| D[dispatcher functions]
+    TH -->|unit| PH[private helpers]
+    TD -->|Register-SecretProvider via module scope| D[dispatcher functions]
     TP -->|Use-MicrosoftPowerShellSecretStoreProvider then invoke| P[Get/Set-InfrastructureSecret]
 ```
