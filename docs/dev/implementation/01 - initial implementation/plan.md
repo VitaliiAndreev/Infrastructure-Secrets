@@ -3,14 +3,16 @@
 ## Index
 - [Step 1 - Provider dispatch](#step-1---provider-dispatch)
 - [Step 2 - MicrosoftPowerShellSecretStore provider](#step-2---microsoftpowershellsecretstore-provider)
-- [Step 3 - Tests](#step-3---tests)
+- [Step 3 - Align vault setup with provider pattern](#step-3---align-vault-setup-with-provider-pattern)
+- [Step 4 - Tests](#step-4---tests)
 
 ---
 
 ## Prerequisites
 
-`Initialize-InfrastructureVault` already handles one-time vault setup.
-These steps cover the runtime read/write path only.
+`Initialize-InfrastructureVault` handles one-time vault setup (see Step 3
+for planned rename). These steps cover the runtime read/write path and the
+alignment of vault setup naming with the provider pattern.
 
 ---
 
@@ -195,14 +197,103 @@ graph TD
 
 ---
 
-## Step 3 - Tests
+## Step 3 - Align vault setup with provider pattern
 
-### Existing tests - no changes required
+**Why:** `Initialize-InfrastructureVault` is SecretStore-specific (installs
+SecretManagement + SecretStore, configures SecretStore auth, registers a
+vault, stores and verifies a secret). The generic name implies it works with
+any backend, which is false and breaks the abstraction's promise. Two
+changes fix this:
 
-`Initialize-InfrastructureVault.Tests.ps1` is unaffected. That function
-handles vault *setup* and calls `Get-Secret`/`Set-Secret` directly — it
-does not use the provider abstraction and has no reason to. Its stubs and
-mocks remain valid as-is.
+**Change 1 — Move module installation into
+`Use-MicrosoftPowerShellSecretStoreProvider`.**
+The function already owns "prepare and register the SecretStore backend";
+ensuring the required modules are present is part of that. After this
+change, calling `Use-MicrosoftPowerShellSecretStoreProvider` is sufficient
+for a consumer that only needs runtime reads/writes on a machine where the
+vault is already initialised — no vault-setup code runs.
+
+Steps added before `Register-SecretProvider`:
+1. Call `Invoke-ModuleInstall` (from `Infrastructure.Common`) for
+   `Microsoft.PowerShell.SecretManagement`.
+2. Call `Invoke-ModuleInstall` for `Microsoft.PowerShell.SecretStore`.
+
+`Invoke-ModuleInstall` handles the install-if-absent check and import in
+one call. The inline NuGet provider guard currently in
+`Initialize-InfrastructureVault` is removed — NuGet is a prerequisite for
+`Install-Module` and is handled by the consumer's bootstrap before any
+module in this family is loaded.
+
+`Infrastructure.Common` must be declared in `RequiredModules` in
+`Infrastructure.Secrets.psd1` so `Invoke-ModuleInstall` is available
+inside module function bodies without an explicit import at the call site.
+
+**Change 2 — Rename `Initialize-InfrastructureVault` to
+`Initialize-MicrosoftPowerShellSecretStoreVault`.**
+The new name is parallel to `Use-MicrosoftPowerShellSecretStoreProvider`
+and makes the backend coupling explicit. The function calls
+`Use-MicrosoftPowerShellSecretStoreProvider` at the start so module
+installation is not duplicated, then continues with SecretStore-specific
+vault work: auth configuration, vault registration, secret storage, and
+round-trip verification.
+
+Files changed:
+- `Public/Use-MicrosoftPowerShellSecretStoreProvider.ps1` — add two
+  `Invoke-ModuleInstall` calls before `Register-SecretProvider`.
+- Rename `Public/Initialize-InfrastructureVault.ps1` →
+  `Public/Initialize-MicrosoftPowerShellSecretStoreVault.ps1`; remove
+  NuGet guard and module install loop (now owned by `Use-*Provider`);
+  call `Use-MicrosoftPowerShellSecretStoreProvider` at start.
+- `Infrastructure.Secrets.psm1` — update dot-source path and export name.
+- `Infrastructure.Secrets.psd1` — add `Infrastructure.Common` to
+  `RequiredModules`; update `FunctionsToExport`; bump minor version.
+- `README.md` — rename everywhere.
+
+```mermaid
+graph TD
+    subgraph Public["Public"]
+        USS[Use-MicrosoftPowerShellSecretStoreProvider]
+        IVS[Initialize-MicrosoftPowerShellSecretStoreVault]
+    end
+    subgraph Modules["Module install - owned by Use-*Provider"]
+        NuGet[NuGet provider]
+        SM[Microsoft.PowerShell.SecretManagement]
+        SS[Microsoft.PowerShell.SecretStore]
+    end
+    subgraph VaultSetup["Vault setup - owned by Initialize-*"]
+        Auth[SecretStore auth config]
+        Reg[Register-SecretVault]
+        Store[Set-Secret + round-trip verify]
+    end
+    subgraph Private["Private"]
+        RSP[Register-SecretProvider]
+        SP[$Script:SecretProvider]
+    end
+
+    USS --> NuGet
+    USS --> SM
+    USS --> SS
+    USS -->|Name + Get + Set hashtable| RSP
+    RSP -->|Set-Variable ReadOnly| SP
+    IVS -->|calls| USS
+    IVS --> Auth
+    IVS --> Reg
+    IVS --> Store
+```
+
+---
+
+## Step 4 - Tests
+
+### Existing tests - rename only
+
+`Initialize-InfrastructureVault.Tests.ps1` →
+`Initialize-MicrosoftPowerShellSecretStoreVault.Tests.ps1`. The test
+`BeforeAll` dot-sources the renamed file; all existing test cases remain
+valid. Module install steps move out of the function in Step 3, so any
+stubs for `Install-PackageProvider` / `Install-Module` move to the new
+`Use-MicrosoftPowerShellSecretStoreProvider` test context in the new file
+below.
 
 ### New test file
 
@@ -260,15 +351,18 @@ respect the ReadOnly mechanism.
 - `Set-InfrastructureSecret` — dispatches `.Set` with correct `VaultName`,
   `SecretName`, and `Value` arguments; `$Value` with special characters
   passes (not validated).
-- `Use-MicrosoftPowerShellSecretStoreProvider` — after calling, invoking
-  `Get-InfrastructureSecret` calls `Get-Secret` with expected `-Vault` and
-  `-Name`; invoking `Set-InfrastructureSecret` calls `Set-Secret` with
-  expected arguments.
+- `Use-MicrosoftPowerShellSecretStoreProvider` — calls
+  `Invoke-ModuleInstall` for `Microsoft.PowerShell.SecretManagement` and
+  `Microsoft.PowerShell.SecretStore` (stub `Invoke-ModuleInstall` and
+  assert it was called with the correct `-ModuleName` values); after
+  calling, `Get-InfrastructureSecret` dispatches to `Get-Secret` with
+  expected `-Vault` and `-Name`; `Set-InfrastructureSecret` dispatches to
+  `Set-Secret` with expected arguments.
 
 ```mermaid
 graph TD
-    subgraph Existing["Initialize-InfrastructureVault.Tests.ps1 (unchanged)"]
-        ET[existing tests]
+    subgraph Existing["Initialize-MicrosoftPowerShellSecretStoreVault.Tests.ps1 (renamed)"]
+        ET[existing tests - dot-source path updated]
     end
     subgraph New["Get-InfrastructureSecret.Tests.ps1 (new)"]
         TH[Helper tests - Assert-SafeSecretIdentifier, Assert-SecretProviderValid, Assert-DispatchPreconditions, Register-SecretProvider]
