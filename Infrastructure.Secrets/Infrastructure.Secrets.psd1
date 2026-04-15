@@ -6,11 +6,16 @@
     PowerShellVersion = '5.1'
     RootModule        = 'Infrastructure.Secrets.psm1'
     FunctionsToExport = @(
-        'Initialize-InfrastructureVault'
+        'Initialize-MicrosoftPowerShellSecretStoreVault'
         'Get-InfrastructureSecret'
         'Set-InfrastructureSecret'
+        'Use-MicrosoftPowerShellSecretStoreProvider'
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()
-    RequiredModules   = @()
+    # Infrastructure.Common provides Invoke-ModuleInstall, used by
+    # Use-MicrosoftPowerShellSecretStoreProvider to install the SecretStore
+    # stack. Declaring it here ensures it is available inside module function
+    # bodies without a manual Import-Module at each call site.
+    RequiredModules   = @('Infrastructure.Common')
 }

@@ -10,7 +10,8 @@ runtime read/write across the `Infrastructure-*` polyrepo family.
 - [Publishing](#publishing)
 - [Usage](#usage)
 - [API reference](#api-reference)
-  - [Initialize-InfrastructureVault](#initialize-infrastructurevault)
+  - [Initialize-MicrosoftPowerShellSecretStoreVault](#initialize-microsoftpowershellsecretstoreprovidervault)
+  - [Use-MicrosoftPowerShellSecretStoreProvider](#use-microsoftpowershellsecretstoreproviderprovider)
   - [Get-InfrastructureSecret](#get-infrastructuresecret)
   - [Set-InfrastructureSecret](#set-infrastructuresecret)
 - [Repo structure](#repo-structure)
@@ -22,11 +23,11 @@ runtime read/write across the `Infrastructure-*` polyrepo family.
 Provides two groups of functions:
 
 **Vault setup (one-time, per machine):**
-`Initialize-InfrastructureVault` handles all PowerShell SecretManagement boilerplate:
+`Initialize-MicrosoftPowerShellSecretStoreVault` handles SecretStore-specific
+one-time setup:
 
-- NuGet provider check
 - `Microsoft.PowerShell.SecretManagement` + `Microsoft.PowerShell.SecretStore`
-  module installation
+  module installation (via `Use-MicrosoftPowerShellSecretStoreProvider`)
 - SecretStore configuration and initialisation (non-interactive, AES-256
   encrypted, scoped to the current Windows user account)
 - Vault registration
@@ -41,6 +42,12 @@ project-specific validation logic.
 functions that route to whichever backend was registered by a `Use-*Provider`
 call. Swapping secret backends requires only changing which `Use-*Provider`
 is called; no other code changes.
+
+`Use-MicrosoftPowerShellSecretStoreProvider` registers
+`Microsoft.PowerShell.SecretStore` as the active backend - a cross-platform
+PowerShell module that stores secrets in an AES-256 / DPAPI-encrypted local
+file (scoped to the Windows user account on Windows). It is not the Windows
+Credential Manager.
 
 ---
 
@@ -87,12 +94,12 @@ Generate a key at [powershellgallery.com/account/apikeys](https://www.powershell
 ## Usage
 
 A consuming repo's `setup-secrets.ps1` imports the module and calls
-`Initialize-InfrastructureVault`:
+`Initialize-MicrosoftPowerShellSecretStoreVault`:
 
 ```powershell
 Import-Module Infrastructure.Secrets -ErrorAction Stop
 
-Initialize-InfrastructureVault `
+Initialize-MicrosoftPowerShellSecretStoreVault `
     -VaultName  'MyVault' `
     -SecretName 'MyConfig' `
     -ConfigFile $ConfigFile `
@@ -123,7 +130,7 @@ Set-InfrastructureSecret -VaultName 'MyVault' -SecretName 'MyConfig' -Value $jso
 
 ## API reference
 
-### `Initialize-InfrastructureVault`
+### `Initialize-MicrosoftPowerShellSecretStoreVault`
 
 | Parameter               | Type        | Required | Description                                                           |
 |-------------------------|-------------|----------|-----------------------------------------------------------------------|
@@ -135,6 +142,20 @@ Set-InfrastructureSecret -VaultName 'MyVault' -SecretName 'MyConfig' -Value $jso
 | `-Validate`             | scriptblock | No       | Project-specific validation; receives the JSON string; throw to abort |
 
 \* Exactly one of `-ConfigFile` or `-ConfigJson` is required.
+
+Calls `Use-MicrosoftPowerShellSecretStoreProvider` internally, so module
+installation and provider registration happen automatically.
+
+---
+
+### `Use-MicrosoftPowerShellSecretStoreProvider`
+
+Registers `Microsoft.PowerShell.SecretStore` as the active provider. Call
+once per session before `Get-InfrastructureSecret` or
+`Set-InfrastructureSecret`. Safe to call again with the same provider
+(idempotent). Throws if a different provider is already registered.
+
+No parameters.
 
 ---
 
@@ -174,9 +195,10 @@ Infrastructure-Secrets/
 |  |  |- Assert-DispatchPreconditions.ps1  # Shared guard for both dispatchers
 |  |  `- Register-SecretProvider.ps1       # ReadOnly enforcement and idempotency
 |  |- Public/
-|  |  |- Initialize-InfrastructureVault.ps1
+|  |  |- Initialize-MicrosoftPowerShellSecretStoreVault.ps1
 |  |  |- Get-InfrastructureSecret.ps1
 |  |  |- Set-InfrastructureSecret.ps1
+|  |  `- Use-MicrosoftPowerShellSecretStoreProvider.ps1
 |  |- Infrastructure.Secrets.psm1          # Dot-sources all files; exports functions
 |  `- Infrastructure.Secrets.psd1          # Module manifest (version, GUID, exports)
 |- Tests/               # Pester unit tests

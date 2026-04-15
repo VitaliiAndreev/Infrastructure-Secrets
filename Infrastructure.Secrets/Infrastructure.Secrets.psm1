@@ -6,9 +6,10 @@
     Provides two groups of functions:
 
     Vault setup (one-time, per machine):
-      Initialize-InfrastructureVault - handles all SecretManagement
-      boilerplate: NuGet provider, module installation, SecretStore
-      configuration, vault registration, and secret storage.
+      Initialize-MicrosoftPowerShellSecretStoreVault - configures
+      SecretStore, registers a local vault, and stores a JSON config
+      secret. Calls Use-MicrosoftPowerShellSecretStoreProvider internally
+      so module installation is not duplicated.
 
     Runtime read/write (provider-based):
       Get-InfrastructureSecret / Set-InfrastructureSecret - thin dispatch
@@ -38,12 +39,14 @@ $Script:SecretProvider = $null
 . "$PSScriptRoot\Private\Assert-DispatchPreconditions.ps1"
 . "$PSScriptRoot\Private\Register-SecretProvider.ps1"
 
-. "$PSScriptRoot\Public\Initialize-InfrastructureVault.ps1"
+. "$PSScriptRoot\Public\Initialize-MicrosoftPowerShellSecretStoreVault.ps1"
 . "$PSScriptRoot\Public\Get-InfrastructureSecret.ps1"
 . "$PSScriptRoot\Public\Set-InfrastructureSecret.ps1"
+. "$PSScriptRoot\Public\Use-MicrosoftPowerShellSecretStoreProvider.ps1"
 
 Export-ModuleMember -Function @(
-    'Initialize-InfrastructureVault'
+    'Initialize-MicrosoftPowerShellSecretStoreVault'
     'Get-InfrastructureSecret'
     'Set-InfrastructureSecret'
+    'Use-MicrosoftPowerShellSecretStoreProvider'
 )

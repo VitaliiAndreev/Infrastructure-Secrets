@@ -1,14 +1,22 @@
-function Initialize-InfrastructureVault {
+function Initialize-MicrosoftPowerShellSecretStoreVault {
     <#
     .SYNOPSIS
-        One-time setup: installs SecretManagement modules, registers a local
-        vault, and stores a JSON config string as an encrypted secret.
+        One-time setup: configures SecretStore, registers a local vault, and
+        stores a JSON config string as an encrypted secret.
 
     .DESCRIPTION
         Idempotent - safe to re-run to update the stored config.
 
+        Calls Use-MicrosoftPowerShellSecretStoreProvider at the start, which
+        installs Microsoft.PowerShell.SecretManagement and
+        Microsoft.PowerShell.SecretStore if not already present and registers
+        the provider for the current session.
+
         The SecretStore vault is AES-256 encrypted and scoped to the current
-        Windows user account. No secrets are written to disk in plain text.
+        Windows user account via DPAPI. No secrets are written to disk in plain
+        text. This function is specific to the Microsoft.PowerShell.SecretStore
+        backend - for other backends, implement an equivalent
+        Initialize-*Vault function that calls the corresponding Use-*Provider.
 
     .PARAMETER VaultName
         Name of the SecretStore vault to register (e.g. 'GHRunners').
@@ -81,46 +89,17 @@ function Initialize-InfrastructureVault {
     }
 
     # -----------------------------------------------------------------------
-    # 3. Ensure NuGet provider is available
-    #    PowerShellGet requires NuGet >= 2.8.5.201 to install modules from
-    #    PSGallery. -ForceBootstrap suppresses the interactive prompt.
+    # 3. Ensure SecretStore modules are installed and register the provider
+    #    Use-MicrosoftPowerShellSecretStoreProvider installs
+    #    Microsoft.PowerShell.SecretManagement and
+    #    Microsoft.PowerShell.SecretStore via Invoke-ModuleInstall, then
+    #    registers the provider for the current session.
     # -----------------------------------------------------------------------
 
-    Write-Host "Ensuring NuGet package provider ..." -ForegroundColor Cyan
-    Install-PackageProvider -Name NuGet -MinimumVersion 2.8.5.201 `
-        -Scope CurrentUser -Force -ForceBootstrap | Out-Null
-    Write-Host "OK - NuGet provider ready." -ForegroundColor Green
+    Use-MicrosoftPowerShellSecretStoreProvider
 
     # -----------------------------------------------------------------------
-    # 4. Install SecretManagement modules if not already present
-    #    Install all before importing any - importing SecretManagement before
-    #    SecretStore is installed causes a "module in use" warning when
-    #    PowerShellGet tries to satisfy SecretStore's dependency on it.
-    # -----------------------------------------------------------------------
-
-    $requiredModules = @(
-        'Microsoft.PowerShell.SecretManagement',
-        'Microsoft.PowerShell.SecretStore'
-    )
-
-    foreach ($mod in $requiredModules) {
-        if (-not (Get-Module -ListAvailable -Name $mod)) {
-            Write-Host "Installing module: $mod ..." -ForegroundColor Cyan
-            Install-Module -Name $mod -Repository PSGallery `
-                -Scope CurrentUser -Force
-            Write-Host "OK - Installed $mod." -ForegroundColor Green
-        }
-        else {
-            Write-Host "OK - Module already present: $mod" -ForegroundColor Green
-        }
-    }
-
-    foreach ($mod in $requiredModules) {
-        Import-Module $mod -ErrorAction Stop
-    }
-
-    # -----------------------------------------------------------------------
-    # 5. Configure SecretStore
+    # 4. Configure SecretStore
     #    Authentication=None means the vault is unlocked automatically for
     #    the current Windows user (key derived from Windows user profile).
     #    No separate vault password is required unless -RequireVaultPassword.
@@ -195,7 +174,8 @@ function Initialize-InfrastructureVault {
             )
         }
 
-        $tempPass  = ConvertTo-SecureString 'InfrastructureSecretsInit1!' -AsPlainText -Force
+        $tempPass  = ConvertTo-SecureString 'InfrastructureSecretsInit1!' `
+            -AsPlainText -Force
         $savedPref = $ConfirmPreference
         try {
             $ConfirmPreference = 'None'
@@ -216,7 +196,7 @@ function Initialize-InfrastructureVault {
     }
 
     # -----------------------------------------------------------------------
-    # 6. Register vault (idempotent)
+    # 5. Register vault (idempotent)
     # -----------------------------------------------------------------------
 
     if (-not (Get-SecretVault -Name $VaultName -ErrorAction SilentlyContinue)) {
@@ -232,7 +212,7 @@ function Initialize-InfrastructureVault {
     }
 
     # -----------------------------------------------------------------------
-    # 7. Store the secret (Set-Secret overwrites - safe to re-run)
+    # 6. Store the secret (Set-Secret overwrites - safe to re-run)
     # -----------------------------------------------------------------------
 
     Write-Host "Storing secret '$SecretName' in vault '$VaultName' ..." `
@@ -241,7 +221,7 @@ function Initialize-InfrastructureVault {
     Write-Host "OK - Secret stored." -ForegroundColor Green
 
     # -----------------------------------------------------------------------
-    # 8. Round-trip verification
+    # 7. Round-trip verification
     # -----------------------------------------------------------------------
 
     $readBack = Get-Secret -Vault $VaultName -Name $SecretName -AsPlainText
