@@ -114,8 +114,14 @@ AfterAll {
 
 Describe 'Set/Get-InfrastructureSecret round-trip' -Tag 'Integration' {
 
-    It 'Get-InfrastructureSecret returns the exact value stored by Set-InfrastructureSecret' `
-        -Skip:($null -ne $Script:SkipReason) {
+    It 'Get-InfrastructureSecret returns the exact value stored by Set-InfrastructureSecret' {
+        # -Skip cannot reference $Script:SkipReason directly because Pester
+        # evaluates -Skip during discovery, before BeforeAll runs. Use
+        # Set-ItResult instead, which runs at execution time.
+        if ($null -ne $Script:SkipReason) {
+            Set-ItResult -Skipped -Because $Script:SkipReason
+            return
+        }
 
         $value = '{"key":"integration-test","nested":{"count":42}}'
 
