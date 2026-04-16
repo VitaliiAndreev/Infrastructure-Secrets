@@ -33,22 +33,18 @@ BeforeAll {
     . "$PSScriptRoot\..\..\Infrastructure.Secrets\Private\Register-SecretProvider.ps1"
     . "$PSScriptRoot\..\..\Infrastructure.Secrets\Public\Get-InfrastructureSecret.ps1"
     . "$PSScriptRoot\..\..\Infrastructure.Secrets\Public\Set-InfrastructureSecret.ps1"
-    . "$PSScriptRoot\..\..\Infrastructure.Secrets\Public\Use-MicrosoftPowerShellSecretStoreProvider.ps1"
 
-    # Provide Invoke-ModuleInstall inline since Infrastructure.Common is not
-    # required to be installed in the integration test environment. The real
-    # implementation is tested separately in Infrastructure-Common.
-    function Invoke-ModuleInstall {
-        param($ModuleName)
-        if (-not (Get-Module -ListAvailable -Name $ModuleName)) {
-            Install-Module $ModuleName -Scope CurrentUser -Force -SkipPublisherCheck
+    # Install and import the SecretStore stack once. Modules are not installed
+    # again later - Register-SecretProvider is called directly below to avoid
+    # a second Import-Module that can interfere with the store configuration
+    # that was just applied.
+    foreach ($mod in @('Microsoft.PowerShell.SecretManagement',
+                       'Microsoft.PowerShell.SecretStore')) {
+        if (-not (Get-Module -ListAvailable -Name $mod)) {
+            Install-Module $mod -Scope CurrentUser -Force -SkipPublisherCheck
         }
-        Import-Module $ModuleName -Force
+        Import-Module $mod -Force
     }
-
-    # Install and import the SecretStore stack.
-    Invoke-ModuleInstall -ModuleName 'Microsoft.PowerShell.SecretManagement'
-    Invoke-ModuleInstall -ModuleName 'Microsoft.PowerShell.SecretStore'
 
     # ---------------------------------------------------------------------------
     # SecretStore authentication check
@@ -56,40 +52,62 @@ BeforeAll {
     #   rather than resetting it and destroying existing secrets.
     # ---------------------------------------------------------------------------
 
-    $storeCfg = $null
-    try { $storeCfg = Get-SecretStoreConfiguration -ErrorAction Stop } catch { }
+    # Detect initialisation via the store directory rather than calling
+    # Get-SecretStoreConfiguration. On an uninitialised store that cmdlet does
+    # not throw - it prompts for a password interactively, and $ConfirmPreference
+    # does not suppress that kind of input request. Checking the directory is the
+    # only way to branch without triggering the prompt.
+    $isWin    = $env:OS -eq 'Windows_NT'   # $IsWindows requires PS 6+
+    $storeDir = if ($isWin) {
+        [IO.Path]::Combine($env:LOCALAPPDATA, 'Microsoft', 'PowerShell',
+            'secretmanagement', 'localstore')
+    } else {
+        [IO.Path]::Combine($HOME, '.secretmanagement', 'localstore')
+    }
+    $storeInitialised = Test-Path $storeDir
 
-    $authValue = if ($null -ne $storeCfg) { $storeCfg.Authentication } else { $null }
-    $storeIsPassword = ($null -ne $authValue) -and
-                       ($authValue -ne 0) -and ("$authValue" -ne 'None')
+    # $Global:ConfirmPreference = 'None' suppresses standard ShouldProcess prompts.
+    # Reset-SecretStore also has a custom confirmation check that requires -Force
+    # to bypass - neither $ConfirmPreference nor -Confirm:$false affects it.
+    $savedPref = $Global:ConfirmPreference
+    $Global:ConfirmPreference = 'None'
 
-    if ($storeIsPassword) {
-        Write-Warning (
-            'SecretStore is configured with Password authentication. ' +
-            'Integration tests require Authentication=None for non-interactive ' +
-            'use and will be skipped to avoid resetting the store. ' +
-            'To run these tests, reset the store manually: ' +
-            "Reset-SecretStore -Authentication None -Interaction None"
-        )
-        $Script:SkipReason = 'SecretStore uses Password auth - cannot run non-interactively'
+    if (-not $storeInitialised) {
+        # Fresh environment - initialise directly with Authentication=None.
+        $Script:SkipReason = $null
+        $tempPass = ConvertTo-SecureString 'InfrastructureSecretsInit1!' `
+            -AsPlainText -Force
+        Reset-SecretStore -Authentication Password -Password $tempPass `
+            -Interaction None -Force
+        Set-SecretStoreConfiguration -Authentication None `
+            -Password $tempPass -Interaction None -Confirm:$false
     }
     else {
-        $Script:SkipReason = $null
+        # Store exists - safe to read its configuration now.
+        $storeCfg = $null
+        try { $storeCfg = Get-SecretStoreConfiguration -ErrorAction Stop } catch { }
 
-        # Initialise the store if not yet done.
-        if ($null -eq $storeCfg) {
-            $tempPass      = ConvertTo-SecureString 'InfrastructureSecretsInit1!' `
-                -AsPlainText -Force
-            $savedPref     = $ConfirmPreference
-            try {
-                $ConfirmPreference = 'None'
-                Reset-SecretStore -Authentication Password -Password $tempPass `
-                    -Interaction None -Confirm:$false
-                Set-SecretStoreConfiguration -Authentication None `
-                    -Password $tempPass -Interaction None -Confirm:$false
-            }
-            finally { $ConfirmPreference = $savedPref }
+        $authValue       = if ($null -ne $storeCfg) { $storeCfg.Authentication } else { $null }
+        $storeIsPassword = ($null -ne $authValue) -and
+                           ($authValue -ne 0) -and ("$authValue" -ne 'None')
+
+        if ($storeIsPassword) {
+            $Global:ConfirmPreference = $savedPref
+            Write-Warning (
+                'SecretStore is configured with Password authentication. ' +
+                'Integration tests require Authentication=None for non-interactive ' +
+                'use and will be skipped to avoid resetting the store.'
+            )
+            $Script:SkipReason = 'SecretStore uses Password auth - cannot run non-interactively'
         }
+        else {
+            $Script:SkipReason = $null
+        }
+    }
+
+    $Global:ConfirmPreference = $savedPref
+
+    if ($null -eq $Script:SkipReason) {
 
         # Register the integration test vault if it does not already exist.
         # Track whether we created it so AfterAll can clean up.
@@ -99,8 +117,20 @@ BeforeAll {
             $Script:VaultCreated = $true
         }
 
-        # Register the provider for the session.
-        Use-MicrosoftPowerShellSecretStoreProvider
+        # Register the provider directly. Use-MicrosoftPowerShellSecretStoreProvider
+        # is intentionally not called here - it would re-import the already-loaded
+        # SecretStore modules, which can interfere with the auth configuration
+        # applied above. The provider scriptblocks are identical to what
+        # Use-MicrosoftPowerShellSecretStoreProvider registers.
+        Register-SecretProvider -Provider @{
+            Name = 'MicrosoftPowerShellSecretStore'
+            Get  = { param($VaultName, $SecretName)
+                     Get-Secret -Vault $VaultName -Name $SecretName `
+                         -AsPlainText -ErrorAction Stop }
+            Set  = { param($VaultName, $SecretName, $Value)
+                     Set-Secret -Vault $VaultName -Name $SecretName `
+                         -Secret $Value -ErrorAction Stop }
+        }
     }
 }
 
