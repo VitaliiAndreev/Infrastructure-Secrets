@@ -1,20 +1,27 @@
 BeforeAll {
-    . "$PSScriptRoot\..\Infrastructure.Secrets\Public\Initialize-InfrastructureVault.ps1"
+    . "$PSScriptRoot\..\..\Infrastructure.Secrets\Public\Initialize-MicrosoftPowerShellSecretStoreVault.ps1"
 
-    # Stub functions for SecretManagement cmdlets that are not installed in
-    # the test environment. Pester requires a command to exist before it can
-    # be mocked - these stubs satisfy that requirement without doing anything.
+    # Stub for the provider registration call. Module install and provider
+    # registration are tested in Get-InfrastructureSecret.Tests.ps1; here
+    # it is mocked so vault-setup tests run without side effects.
+    function Use-MicrosoftPowerShellSecretStoreProvider { }
+
+    # Stubs for SecretManagement cmdlets not installed in the test environment.
+    # Pester requires a command to exist before it can be mocked.
     function Get-SecretStoreConfiguration { }
-    function Set-SecretStoreConfiguration { }
+    # $Authentication declared so Pester ParameterFilter can bind it.
+    # Other parameters are intentionally omitted - they are not asserted on.
+    function Set-SecretStoreConfiguration { param($Authentication) }
     function Reset-SecretStore { }
     function Get-SecretVault { }
-    function Register-SecretVault { }
+    # Params declared so Pester ParameterFilter can bind $Name/$ModuleName/$DefaultVault.
+    function Register-SecretVault { param($Name, $ModuleName, [switch]$DefaultVault) }
     # Params declared so Pester's ParameterFilter can bind $Vault/$Name/$Secret.
     function Set-Secret { param($Vault, $Name, $Secret) }
     function Get-Secret { param($Vault, $Name, [switch] $AsPlainText) }
 }
 
-Describe 'Initialize-InfrastructureVault' {
+Describe 'Initialize-MicrosoftPowerShellSecretStoreVault' {
 
     # ------------------------------------------------------------------
     # Shared mock setup for the happy path (store already configured,
@@ -27,11 +34,9 @@ Describe 'Initialize-InfrastructureVault' {
         # that noise makes test output hard to read.
         Mock Write-Host {}
 
-        # Modules already installed - skip Install-Module.
-        Mock Get-Module { param($Name) return @{ Name = $Name } }
-        Mock Install-PackageProvider {}
-        Mock Install-Module {}
-        Mock Import-Module {}
+        # Module install and provider registration are owned by
+        # Use-MicrosoftPowerShellSecretStoreProvider - stub it out here.
+        Mock Use-MicrosoftPowerShellSecretStoreProvider {}
 
         # SecretStore already configured with Authentication=None.
         Mock Get-SecretStoreConfiguration {
@@ -56,7 +61,7 @@ Describe 'Initialize-InfrastructureVault' {
 
         It 'throws when the config file does not exist' {
             Mock Test-Path { $false }
-            { Initialize-InfrastructureVault `
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigFile 'C:\nonexistent.json' } |
                 Should -Throw -ExpectedMessage "*Config file not found*"
@@ -66,7 +71,7 @@ Describe 'Initialize-InfrastructureVault' {
             Mock Test-Path { $true }
             Mock Get-Content { '{"key":"value"}' }
 
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigFile 'C:\config.json'
 
@@ -79,7 +84,7 @@ Describe 'Initialize-InfrastructureVault' {
     # ------------------------------------------------------------------
 
         It 'accepts inline JSON without touching the filesystem' {
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}'
 
@@ -96,7 +101,7 @@ Describe 'Initialize-InfrastructureVault' {
             $script:capturedJson = $null
             $validate = { param($json) $script:capturedJson = $json }
 
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}' `
                 -Validate $validate
@@ -107,7 +112,7 @@ Describe 'Initialize-InfrastructureVault' {
         It 'aborts before touching the vault when Validate throws' {
             $validate = { param($json) throw 'Invalid config' }
 
-            { Initialize-InfrastructureVault `
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}' `
                 -Validate $validate } |
@@ -119,27 +124,15 @@ Describe 'Initialize-InfrastructureVault' {
     }
 
     # ------------------------------------------------------------------
-    Context 'NuGet and module installation' {
+    Context 'Provider registration' {
     # ------------------------------------------------------------------
 
-        It 'installs missing SecretManagement modules' {
-            # Override: modules not present.
-            Mock Get-Module { $null }
-
-            Initialize-InfrastructureVault `
+        It 'calls Use-MicrosoftPowerShellSecretStoreProvider before touching the vault' {
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}'
 
-            Should -Invoke Install-Module -Times 2 -Exactly
-        }
-
-        It 'skips Install-Module when modules are already present' {
-            # Default BeforeEach mock: Get-Module returns an object.
-            Initialize-InfrastructureVault `
-                -VaultName 'TestVault' -SecretName 'TestSecret' `
-                -ConfigJson '{"key":"value"}'
-
-            Should -Invoke Install-Module -Times 0
+            Should -Invoke Use-MicrosoftPowerShellSecretStoreProvider -Times 1 -Exactly
         }
     }
 
@@ -152,7 +145,7 @@ Describe 'Initialize-InfrastructureVault' {
                 [PSCustomObject] @{ Authentication = 1 }  # 1 == Password
             }
 
-            { Initialize-InfrastructureVault `
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}' } |
                 Should -Throw -ExpectedMessage "*Authentication='Password'*"
@@ -160,7 +153,7 @@ Describe 'Initialize-InfrastructureVault' {
 
         It 'throws a helpful message when the store uses None but Password is required' {
             # Default mock returns Authentication=None; flag demands Password.
-            { Initialize-InfrastructureVault `
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}' `
                 -RequireVaultPassword } |
@@ -174,7 +167,7 @@ Describe 'Initialize-InfrastructureVault' {
 
             $err = $null
             try {
-                Initialize-InfrastructureVault `
+                Initialize-MicrosoftPowerShellSecretStoreVault `
                     -VaultName 'TestVault' -SecretName 'TestSecret' `
                     -ConfigJson '{"key":"value"}'
             }
@@ -195,7 +188,7 @@ Describe 'Initialize-InfrastructureVault' {
             Mock Reset-SecretStore {}
             Mock Set-SecretStoreConfiguration {}
 
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}'
 
@@ -212,12 +205,42 @@ Describe 'Initialize-InfrastructureVault' {
             Mock Reset-SecretStore {}
             Mock Set-SecretStoreConfiguration {}
 
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}'
 
             # Auth matched via file - no store reset should have occurred.
             Should -Invoke Reset-SecretStore -Times 0
+        }
+
+        It 'initialises the store with Authentication Password when -RequireVaultPassword and store is uninitialised' {
+            Mock Get-SecretStoreConfiguration { throw 'not initialised' }
+            Mock Test-Path { $false }
+            Mock Reset-SecretStore {}
+            Mock Set-SecretStoreConfiguration {}
+
+            Initialize-MicrosoftPowerShellSecretStoreVault `
+                -VaultName 'TestVault' -SecretName 'TestSecret' `
+                -ConfigJson '{"key":"value"}' `
+                -RequireVaultPassword
+
+            Should -Invoke Reset-SecretStore -Times 1 -Exactly
+            Should -Invoke Set-SecretStoreConfiguration -Times 1 -Exactly -ParameterFilter {
+                $Authentication -eq 'Password'
+            }
+        }
+
+        It 'throws a mismatch error when storeconfig file shows Password but None is required' {
+            Mock Get-SecretStoreConfiguration { throw 'cmdlet unavailable' }
+            Mock Test-Path { $true }
+            Mock Get-Content { '{"Authentication":1}' }  # 1 == Password, but None required
+            Mock Reset-SecretStore {}
+            Mock Set-SecretStoreConfiguration {}
+
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
+                -VaultName 'TestVault' -SecretName 'TestSecret' `
+                -ConfigJson '{"key":"value"}' } |
+                Should -Throw -ExpectedMessage "*Authentication='Password'*"
         }
     }
 
@@ -230,7 +253,7 @@ Describe 'Initialize-InfrastructureVault' {
                 [PSCustomObject] @{ Authentication = 1 }  # 1 == Password
             }
 
-            { Initialize-InfrastructureVault `
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}' `
                 -RequireVaultPassword } | Should -Not -Throw
@@ -246,16 +269,20 @@ Describe 'Initialize-InfrastructureVault' {
         It 'registers the vault when it does not yet exist' {
             Mock Get-SecretVault { $null }
 
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}'
 
-            Should -Invoke Register-SecretVault -Times 1 -Exactly
+            Should -Invoke Register-SecretVault -Times 1 -Exactly -ParameterFilter {
+                $Name -eq 'TestVault' -and
+                $ModuleName -eq 'Microsoft.PowerShell.SecretStore' -and
+                $DefaultVault -eq $true
+            }
         }
 
         It 'skips registration when the vault is already registered' {
             # Default BeforeEach mock: Get-SecretVault returns an object.
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}'
 
@@ -268,19 +295,20 @@ Describe 'Initialize-InfrastructureVault' {
     # ------------------------------------------------------------------
 
         It 'stores the secret in the named vault' {
-            Initialize-InfrastructureVault `
+            Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'MyVault' -SecretName 'MySecret' `
                 -ConfigJson '{"key":"value"}'
 
             Should -Invoke Set-Secret -Times 1 -Exactly -ParameterFilter {
-                $Vault -eq 'MyVault' -and $Name -eq 'MySecret'
+                $Vault -eq 'MyVault' -and $Name -eq 'MySecret' -and
+                $Secret -eq '{"key":"value"}'
             }
         }
 
         It 'throws when the round-trip read returns invalid JSON' {
             Mock Get-Secret { 'not-valid-json{{{{' }
 
-            { Initialize-InfrastructureVault `
+            { Initialize-MicrosoftPowerShellSecretStoreVault `
                 -VaultName 'TestVault' -SecretName 'TestSecret' `
                 -ConfigJson '{"key":"value"}' } |
                 Should -Throw
