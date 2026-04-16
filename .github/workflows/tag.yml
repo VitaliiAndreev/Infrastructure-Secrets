@@ -35,5 +35,7 @@ jobs:
   publish:
     needs: tag
     uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/publish.yml@master
+    with:
+      module-path: Infrastructure.Secrets
     secrets:
       PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
