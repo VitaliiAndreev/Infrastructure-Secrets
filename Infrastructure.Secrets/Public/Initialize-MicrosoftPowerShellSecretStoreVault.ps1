@@ -112,9 +112,9 @@ function Initialize-MicrosoftPowerShellSecretStoreVault {
     #    Initialisation: SecretStore always requires a password on first
     #    Reset-SecretStore, even when the target auth mode is None. We
     #    supply a temp password non-interactively, then switch to the target
-    #    auth mode immediately. $ConfirmPreference = 'None' suppresses the
-    #    Reset-SecretStore confirmation in module versions that ignore
-    #    -Confirm:$false.
+    #    auth mode immediately. Reset-SecretStore has a custom confirmation
+    #    check beyond ShouldProcess that requires -Force; $Global:ConfirmPreference
+    #    = 'None' suppresses the remaining ShouldProcess prompt.
     # -----------------------------------------------------------------------
 
     $authMode = if ($RequireVaultPassword) { 'Password' } else { 'None' }
@@ -176,16 +176,19 @@ function Initialize-MicrosoftPowerShellSecretStoreVault {
 
         $tempPass  = ConvertTo-SecureString 'InfrastructureSecretsInit1!' `
             -AsPlainText -Force
+        # $ConfirmPreference = 'None' suppresses the ShouldProcess confirmation.
+        # Reset-SecretStore also has a custom confirmation check on top of
+        # ShouldProcess that requires -Force to bypass.
         $savedPref = $ConfirmPreference
         try {
             $ConfirmPreference = 'None'
             Reset-SecretStore -Authentication Password -Password $tempPass `
-                -Interaction None -Confirm:$false
+                -Interaction None -Force
             Set-SecretStoreConfiguration -Authentication $authMode `
                 -Password $tempPass -Interaction None -Confirm:$false
         }
         finally {
-            $ConfirmPreference = $savedPref
+            $Global:ConfirmPreference = $savedPref
         }
         Write-Host "OK - SecretStore initialised (Authentication=$authMode)." `
             -ForegroundColor Green

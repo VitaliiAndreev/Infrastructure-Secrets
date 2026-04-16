@@ -383,12 +383,17 @@ registration, SecretStore auth config, vault registration, secret storage).
    `Microsoft.PowerShell.SecretStore` if absent.
 2. Skips gracefully if the store is configured with `Password` auth (to
    avoid resetting a developer's store).
-3. Initialises the store with `Authentication=None` if not yet done
-   (non-interactive; safe for CI).
+3. Detects whether the store is initialised by checking the store directory
+   on disk rather than calling `Get-SecretStoreConfiguration` — on an
+   uninitialised store that cmdlet prompts interactively for a password,
+   which breaks non-interactive Docker runs. If uninitialised, calls
+   `Reset-SecretStore -Force` (`-Force` bypasses a custom confirmation check
+   beyond the standard `ShouldProcess`), then reconfigures to
+   `Authentication=None`.
 4. Registers a dedicated integration test vault; tracks whether it was
    created so `AfterAll` only removes it if this run created it.
 5. Asserts `Get-InfrastructureSecret` returns the exact value stored by
    `Set-InfrastructureSecret`.
 
-Picked up automatically by `Run-Tests.ps1` (recurses `Tests\`). Runs on
-`windows-latest` in GitHub Actions.
+Runs in Docker via `ci-powershell-docker.yml` (PowerShell 7, Linux container).
+Run locally with `Run-IntegrationTests.ps1`.

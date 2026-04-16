@@ -66,11 +66,11 @@ BeforeAll {
     }
     $storeInitialised = Test-Path $storeDir
 
-    # $Global:ConfirmPreference = 'None' suppresses standard ShouldProcess prompts.
-    # Reset-SecretStore also has a custom confirmation check that requires -Force
-    # to bypass - neither $ConfirmPreference nor -Confirm:$false affects it.
-    $savedPref = $Global:ConfirmPreference
-    $Global:ConfirmPreference = 'None'
+    # $ConfirmPreference = 'None' suppresses the ShouldProcess confirmation.
+    # Reset-SecretStore also has a custom confirmation check on top of
+    # ShouldProcess that requires -Force to bypass.
+    $savedPref = $ConfirmPreference
+    $ConfirmPreference = 'None'
 
     if (-not $storeInitialised) {
         # Fresh environment - initialise directly with Authentication=None.
@@ -92,7 +92,7 @@ BeforeAll {
                            ($authValue -ne 0) -and ("$authValue" -ne 'None')
 
         if ($storeIsPassword) {
-            $Global:ConfirmPreference = $savedPref
+            $ConfirmPreference = $savedPref
             Write-Warning (
                 'SecretStore is configured with Password authentication. ' +
                 'Integration tests require Authentication=None for non-interactive ' +
@@ -105,7 +105,7 @@ BeforeAll {
         }
     }
 
-    $Global:ConfirmPreference = $savedPref
+    $ConfirmPreference = $savedPref
 
     if ($null -eq $Script:SkipReason) {
 
