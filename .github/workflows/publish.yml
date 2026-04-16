@@ -1,0 +1,14 @@
+name: Publish to PSGallery
+
+# Delegates to the shared publish workflow in Infrastructure-Common.
+# Kept as a local file so workflow_dispatch is available in this repo.
+on:
+  workflow_dispatch:
+
+jobs:
+  publish:
+    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/publish.yml@master
+    with:
+      module-path: Infrastructure.Secrets
+    secrets:
+      PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
