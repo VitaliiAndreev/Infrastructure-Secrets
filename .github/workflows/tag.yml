@@ -7,6 +7,7 @@ on:
     paths:
       # Only fire when the manifest itself changes, not on every push.
       - 'Infrastructure.Secrets/Infrastructure.Secrets.psd1'
+  workflow_dispatch:
 
 jobs:
   test:
