@@ -285,91 +285,110 @@ graph TD
 
 ## Step 4 - Tests
 
-### Existing tests - rename only
+### Structure
 
-`Initialize-InfrastructureVault.Tests.ps1` →
-`Initialize-MicrosoftPowerShellSecretStoreVault.Tests.ps1`. The test
-`BeforeAll` dot-sources the renamed file; all existing test cases remain
-valid. Module install steps move out of the function in Step 3, so any
-stubs for `Install-PackageProvider` / `Install-Module` move to the new
-`Use-MicrosoftPowerShellSecretStoreProvider` test context in the new file
-below.
+Test files mirror the production code layout. Each function has its own
+file; unit tests mock the function's immediate dependencies only.
 
-### New test file
+```
+Tests/
+  Private/
+    Assert-SafeSecretIdentifier.Tests.ps1
+    Assert-SecretProviderValid.Tests.ps1
+    Assert-DispatchPreconditions.Tests.ps1
+    Register-SecretProvider.Tests.ps1
+  Public/
+    Get-InfrastructureSecret.Tests.ps1
+    Set-InfrastructureSecret.Tests.ps1
+    Use-MicrosoftPowerShellSecretStoreProvider.Tests.ps1
+    Initialize-MicrosoftPowerShellSecretStoreVault.Tests.ps1
+  Integration/
+    SecretStore-RoundTrip.Tests.ps1
+```
 
-Add `Get-InfrastructureSecret.Tests.ps1`.
+### Provider state reset
 
-**`BeforeAll`** — dot-source all private and public function files; declare
-`function Get-Secret { param($Vault, $Name, [switch]$AsPlainText) }` and
-`function Set-Secret { param($Vault, $Name, $Secret) }` as stubs (same
-pattern as the existing file).
-
-**`BeforeEach`** — reset provider state between tests. Because
-`$Script:SecretProvider` is ReadOnly after any registration, a plain
-assignment fails. Use `Set-Variable -Force` inside the module scope:
+All test files that register a provider dot-source the functions rather
+than loading the installed module. This means all functions share the test
+file's script scope. `$Script:SecretProvider` is reset in `BeforeEach`
+with:
 
 ```powershell
-BeforeEach {
-    & (Get-Module Infrastructure.Secrets) {
-        Set-Variable -Name SecretProvider -Value $null -Option None -Force
-    }
-}
+Set-Variable -Name SecretProvider -Value $null -Option None -Scope Script -Force
 ```
 
-**Helper for dispatcher tests** — dispatcher tests need a valid provider
-that passes `Assert-SecretProviderValid`. Define a factory inside the
-module scope so the hashtable structure is correct:
+`-Option None` clears the ReadOnly flag set by `Register-SecretProvider`
+so the next test starts clean.
 
-```powershell
-function New-MockProvider {
-    param([string]$Name = 'MockProvider', [scriptblock]$GetResult = { 'mock' })
-    @{ Name = $Name; Get = $GetResult; Set = {} }
-}
-```
+### Mocking principle
 
-Register it via `Register-SecretProvider` through the module scope to
-respect the ReadOnly mechanism.
+Each unit test file mocks the function's immediate dependencies and
+asserts only what the function under test does — not what its
+dependencies do. Dependency behaviour is covered by each dependency's own
+test file.
 
-**Test cases:**
+Examples:
+- `Assert-DispatchPreconditions.Tests.ps1` mocks `Assert-SafeSecretIdentifier`
+  and `Assert-SecretProviderValid`; asserts each is called with the right args.
+- `Register-SecretProvider.Tests.ps1` mocks `Assert-SecretProviderValid`;
+  asserts it is called with the provider, then tests ReadOnly/idempotency/swap
+  logic independently.
+- `Get-InfrastructureSecret.Tests.ps1` mocks `Assert-DispatchPreconditions`;
+  sets `$Script:SecretProvider` directly; asserts dispatch to `.Get`.
 
-- `Assert-SafeSecretIdentifier` — valid identifiers pass; identifiers with
-  special characters (`;`, `$`, spaces, etc.) throw with a message naming
-  the parameter.
-- `Assert-SecretProviderValid` — null throws; non-hashtable throws; missing
-  `Name` throws; blank `Name` throws; missing `Get`/`Set` throws; wrong
-  types for `Get`/`Set` throw; valid hashtable passes.
-- `Register-SecretProvider` — first registration succeeds and sets
-  ReadOnly; re-registration of same name is idempotent; different name
-  throws with reload instruction; direct assignment after registration
-  throws (because ReadOnly).
-- `Assert-DispatchPreconditions` — unsafe `VaultName` throws; unsafe
-  `SecretName` throws; null provider throws; valid inputs with valid
-  provider pass. Identifier and provider validation is tested here and
-  not repeated in the dispatcher tests below.
-- `Get-InfrastructureSecret` — dispatches `.Get` with correct `VaultName`
-  and `SecretName` arguments when a valid provider is registered.
-- `Set-InfrastructureSecret` — dispatches `.Set` with correct `VaultName`,
-  `SecretName`, and `Value` arguments; `$Value` with special characters
-  passes (not validated).
-- `Use-MicrosoftPowerShellSecretStoreProvider` — calls
-  `Invoke-ModuleInstall` for `Microsoft.PowerShell.SecretManagement` and
-  `Microsoft.PowerShell.SecretStore` (stub `Invoke-ModuleInstall` and
-  assert it was called with the correct `-ModuleName` values); after
-  calling, `Get-InfrastructureSecret` dispatches to `Get-Secret` with
-  expected `-Vault` and `-Name`; `Set-InfrastructureSecret` dispatches to
-  `Set-Secret` with expected arguments.
+### Unit test cases
 
-```mermaid
-graph TD
-    subgraph Existing["Initialize-MicrosoftPowerShellSecretStoreVault.Tests.ps1 (renamed)"]
-        ET[existing tests - dot-source path updated]
-    end
-    subgraph New["Get-InfrastructureSecret.Tests.ps1 (new)"]
-        TH[Helper tests - Assert-SafeSecretIdentifier, Assert-SecretProviderValid, Assert-DispatchPreconditions, Register-SecretProvider]
-        TD[Dispatcher tests - dispatch only, no validation re-test]
-        TP[Provider tests - Mock Get-Secret / Set-Secret]
-    end
-    TH -->|unit| PH[private helpers]
-    TD -->|Register-SecretProvider via module scope| D[dispatcher functions]
-    TP -->|Use-MicrosoftPowerShellSecretStoreProvider then invoke| P[Get/Set-InfrastructureSecret]
-```
+**`Assert-SafeSecretIdentifier`** — valid identifier (hyphens, dots,
+underscores) passes; empty string throws (binding-level); semicolon, dollar
+sign, and space each throw with the parameter name in the message.
+
+**`Assert-SecretProviderValid`** — null throws; non-hashtable throws;
+missing/blank `Name` throws; missing `Get`/`Set` throws; wrong type for
+`Get`/`Set` throws; valid hashtable passes.
+
+**`Assert-DispatchPreconditions`** — calls `Assert-SafeSecretIdentifier`
+for `VaultName` and `SecretName` with correct arguments; calls
+`Assert-SecretProviderValid` with `$Script:SecretProvider`.
+
+**`Register-SecretProvider`** — calls `Assert-SecretProviderValid` with
+the provider; first registration marks variable ReadOnly; re-registration
+of the same name is idempotent and updates stored scriptblocks; different
+name throws with reload instruction; direct assignment throws after
+registration.
+
+**`Get-InfrastructureSecret`** — calls `Assert-DispatchPreconditions` with
+correct `VaultName`/`SecretName`; dispatches `.Get` with correct arguments;
+returns the value from `.Get`.
+
+**`Set-InfrastructureSecret`** — calls `Assert-DispatchPreconditions` with
+correct `VaultName`/`SecretName`; dispatches `.Set` with correct arguments;
+`$Value` with special characters is passed through unmodified.
+
+**`Use-MicrosoftPowerShellSecretStoreProvider`** — calls
+`Invoke-ModuleInstall` for `Microsoft.PowerShell.SecretManagement` and
+`Microsoft.PowerShell.SecretStore`; calls `Register-SecretProvider` with
+`Name = 'MicrosoftPowerShellSecretStore'`; registered `Get` scriptblock
+calls `Get-Secret` with `-AsPlainText`; registered `Set` scriptblock calls
+`Set-Secret` with correct arguments.
+
+**`Initialize-MicrosoftPowerShellSecretStoreVault`** — see existing
+comprehensive test contexts (config loading, validation, provider
+registration, SecretStore auth config, vault registration, secret storage).
+
+### Integration test
+
+`SecretStore-RoundTrip.Tests.ps1` runs against a real SecretStore vault:
+
+1. Installs `Microsoft.PowerShell.SecretManagement` and
+   `Microsoft.PowerShell.SecretStore` if absent.
+2. Skips gracefully if the store is configured with `Password` auth (to
+   avoid resetting a developer's store).
+3. Initialises the store with `Authentication=None` if not yet done
+   (non-interactive; safe for CI).
+4. Registers a dedicated integration test vault; tracks whether it was
+   created so `AfterAll` only removes it if this run created it.
+5. Asserts `Get-InfrastructureSecret` returns the exact value stored by
+   `Set-InfrastructureSecret`.
+
+Picked up automatically by `Run-Tests.ps1` (recurses `Tests\`). Runs on
+`windows-latest` in GitHub Actions.

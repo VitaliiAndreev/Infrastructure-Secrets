@@ -201,7 +201,10 @@ Infrastructure-Secrets/
 |  |  `- Use-MicrosoftPowerShellSecretStoreProvider.ps1
 |  |- Infrastructure.Secrets.psm1          # Dot-sources all files; exports functions
 |  `- Infrastructure.Secrets.psd1          # Module manifest (version, GUID, exports)
-|- Tests/               # Pester unit tests
+|- Tests/
+|  |- Private/          # Unit tests for private functions
+|  |- Public/           # Unit tests for public functions
+|  `- Integration/      # Integration tests against a real SecretStore vault
 |- Install.ps1      # Installs from source for local development
 |- Publish.ps1      # Publishes to PSGallery (called by CI)
 |- Run-Tests.ps1    # Runs Pester tests (called by CI)
