@@ -1,7 +1,7 @@
 name: CI (Docker)
 
 # Delegates to the shared Docker CI workflow in Infrastructure-Common.
-# Kept as a local file so tag.yml can reference it with a local path,
+# Kept as a local file so release.yml can reference it with a local path,
 # mirroring the pattern used by ci.yml for unit tests.
 on:
   pull_request:

@@ -1,4 +1,4 @@
-name: Tag from manifest version
+name: Release
 
 on:
   push:
@@ -33,14 +33,20 @@ jobs:
     if: needs.check-version.outputs.version_is_new == 'true'
     uses: ./.github/workflows/ci-docker.yml
 
-  release:
+  tag:
     needs: [ check-version, test-unit, test-integration ]
     if: needs.check-version.outputs.version_is_new == 'true'
     permissions:
       contents: write
-    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/release.yml@master
+    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/tag.yml@master
     with:
       psd1: 'Infrastructure.Secrets\Infrastructure.Secrets.psd1'
+
+  publish:
+    needs: tag
+    if: needs.tag.outputs.tag_created == 'true'
+    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/publish.yml@master
+    with:
       module-path: Infrastructure.Secrets
     secrets:
       PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
