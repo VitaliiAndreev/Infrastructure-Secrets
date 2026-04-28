@@ -10,33 +10,37 @@ on:
   workflow_dispatch:
 
 jobs:
-  test:
-    uses: ./.github/workflows/ci.yml
-
-  test-integration:
-    uses: ./.github/workflows/ci-docker.yml
-
-  tag:
-    needs: [ test, test-integration ]
+  check-version:
     runs-on: windows-latest
-    permissions:
-      # Required to create and push the tag.
-      contents: write
+    outputs:
+      version_is_new: ${{ steps.check.outputs.version_is_new }}
     steps:
       - uses: actions/checkout@v5
         with:
-          # Full history is required so `git tag -l` can see all existing
-          # tags and avoid creating duplicates.
           fetch-depth: 0
-
-      - uses: VitaliiAndreev/Infrastructure-Common/.github/actions/tag-from-manifest@master
+      - id: check
+        uses: VitaliiAndreev/Infrastructure-Common/.github/actions/check-version-is-new@master
         with:
           psd1: 'Infrastructure.Secrets\Infrastructure.Secrets.psd1'
 
-  publish:
-    needs: tag
-    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/publish.yml@master
+  test-unit:
+    needs: check-version
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/ci.yml
+
+  test-integration:
+    needs: check-version
+    if: needs.check-version.outputs.version_is_new == 'true'
+    uses: ./.github/workflows/ci-docker.yml
+
+  release:
+    needs: [ check-version, test-unit, test-integration ]
+    if: needs.check-version.outputs.version_is_new == 'true'
+    permissions:
+      contents: write
+    uses: VitaliiAndreev/Infrastructure-Common/.github/workflows/release.yml@master
     with:
+      psd1: 'Infrastructure.Secrets\Infrastructure.Secrets.psd1'
       module-path: Infrastructure.Secrets
     secrets:
       PSGALLERY_API_KEY: ${{ secrets.PSGALLERY_API_KEY }}
