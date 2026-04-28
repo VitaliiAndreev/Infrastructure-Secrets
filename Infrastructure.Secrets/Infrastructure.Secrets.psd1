@@ -5,6 +5,12 @@
     Description       = 'Shared secret management for infrastructure repos: vault setup and provider-based runtime read/write.'
     PowerShellVersion = '5.1'
     RootModule        = 'Infrastructure.Secrets.psm1'
+    # FunctionsToExport is module discovery metadata: used by
+    # Get-Module -ListAvailable, Find-Module, and PSGallery without loading
+    # the module. It does NOT control what is callable at runtime - that is
+    # governed by Export-ModuleMember in the psm1, which takes precedence.
+    # Both lists must stay in sync. The shared Module.Tests.ps1 in the
+    # run-unit-tests action enforces this.
     FunctionsToExport = @(
         'Initialize-MicrosoftPowerShellSecretStoreVault'
         'Get-InfrastructureSecret'
