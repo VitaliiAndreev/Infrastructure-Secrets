@@ -1,9 +1,10 @@
 @{
-    ModuleVersion     = '2.1.0'
-    GUID              = 'a3f2e1d4-7b8c-4e5f-9a0b-1c2d3e4f5a6b'
-    Author            = 'Vitaly Andrev'
-    Description       = 'Shared secret management for infrastructure repos: vault setup and provider-based runtime read/write.'
-    PowerShellVersion = '5.1'
+    ModuleVersion        = '3.0.0'
+    GUID                 = 'a3f2e1d4-7b8c-4e5f-9a0b-1c2d3e4f5a6b'
+    Author               = 'Vitaly Andrev'
+    Description          = 'Shared secret management for infrastructure repos: vault setup and provider-based runtime read/write.'
+    PowerShellVersion    = '7.0'
+    CompatiblePSEditions = @('Core')
     RootModule        = 'Infrastructure.Secrets.psm1'
     # FunctionsToExport is module discovery metadata: used by
     # Get-Module -ListAvailable, Find-Module, and PSGallery without loading
@@ -26,7 +27,7 @@
     RequiredModules   = @(
         @{
             ModuleName    = 'Infrastructure.Common'
-            ModuleVersion = '1.1.0'
+            ModuleVersion = '2.0.0'
             GUID          = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
         }
     )
