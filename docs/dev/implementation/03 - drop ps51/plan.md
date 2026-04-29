@@ -27,26 +27,3 @@ All changes are confined to the manifest and docs, making this a single committa
 
 No new tests. Run `Run-Tests.ps1` under `pwsh` locally to confirm all unit tests still
 pass after the manifest change.
-
-```mermaid
-graph TD
-    subgraph Manifest ["Manifest (changed)"]
-        PSD1["Infrastructure.Secrets.psd1\nPowerShellVersion = 7.0\nCompatiblePSEditions = Core\nRequiredModules: Common >= 2.0.0\nModuleVersion bumped"]
-    end
-
-    subgraph Dependency ["Dependency (unchanged)"]
-        COMMON["Infrastructure.Common 2.0.0\nPS 7-only, already shipped"]
-    end
-
-    subgraph Docs ["Docs (changed)"]
-        README["README.md\nRequirements: PowerShell 7+"]
-    end
-
-    subgraph CI ["CI (unchanged)"]
-        CI_YML["ci.yml\ndelegates to ci-powershell.yml@master\n(PS 5.1 job already removed upstream)"]
-    end
-
-    PSD1 -->|"requires"| COMMON
-    PSD1 -->|"reflected in"| README
-    PSD1 -->|"version contract"| CI_YML
-```
