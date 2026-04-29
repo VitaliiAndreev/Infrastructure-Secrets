@@ -5,6 +5,7 @@ runtime read/write across the `Infrastructure-*` polyrepo family.
 
 ## Index
 
+- [Requirements](#requirements)
 - [Overview](#overview)
 - [Installation](#installation)
 - [Publishing](#publishing)
@@ -15,6 +16,12 @@ runtime read/write across the `Infrastructure-*` polyrepo family.
   - [Get-InfrastructureSecret](#get-infrastructuresecret)
   - [Set-InfrastructureSecret](#set-infrastructuresecret)
 - [Repo structure](#repo-structure)
+
+---
+
+## Requirements
+
+PowerShell 7+ (`pwsh`). Windows PowerShell 5.1 is not supported.
 
 ---
 
