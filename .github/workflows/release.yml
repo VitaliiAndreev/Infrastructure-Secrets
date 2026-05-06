@@ -31,7 +31,7 @@ jobs:
   test-integration:
     needs: check-version
     if: needs.check-version.outputs.version_is_new == 'true'
-    uses: ./.github/workflows/ci-docker.yml
+    uses: ./.github/workflows/ci-docker-host.yml
 
   tag:
     needs: [ check-version, test-unit, test-integration ]
