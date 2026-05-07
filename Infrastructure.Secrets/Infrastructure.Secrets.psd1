@@ -1,5 +1,5 @@
 @{
-    ModuleVersion        = '3.0.0'
+    ModuleVersion        = '3.0.1'
     GUID                 = 'a3f2e1d4-7b8c-4e5f-9a0b-1c2d3e4f5a6b'
     Author               = 'Vitaly Andrev'
     Description          = 'Shared secret management for infrastructure repos: vault setup and provider-based runtime read/write.'
@@ -27,7 +27,7 @@
     RequiredModules   = @(
         @{
             ModuleName    = 'Infrastructure.Common'
-            ModuleVersion = '3.0.0'
+            ModuleVersion = '3.0.1'
             GUID          = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
         }
     )
