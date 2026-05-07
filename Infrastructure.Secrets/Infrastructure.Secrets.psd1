@@ -27,7 +27,7 @@
     RequiredModules   = @(
         @{
             ModuleName    = 'Infrastructure.Common'
-            ModuleVersion = '3.0.0'
+            ModuleVersion = '3.0.1'
             GUID          = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
         }
     )
