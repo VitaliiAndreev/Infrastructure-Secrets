@@ -74,8 +74,8 @@ To update an existing installation:
 Update-Module Infrastructure.Secrets
 ```
 
-**For local development of this module:** use `Install.ps1` to install from
-source instead of PSGallery.
+**For local development of this module:** use `scripts\Install.ps1` to install
+from source instead of PSGallery.
 
 ---
 
@@ -90,7 +90,7 @@ Publishing is fully automated via GitHub Actions.
 
 On merge, [.github/workflows/tag.yml](.github/workflows/tag.yml) runs CI,
 creates a matching git tag, then publishes to PSGallery automatically via
-the shared workflow in `Infrastructure-Common`. No manual tagging step required.
+the shared workflow in `PowerShell-Common`. No manual tagging step required.
 
 **One-time setup:** add your PSGallery API key as a repository secret named
 `PSGALLERY_API_KEY` under Settings -> Secrets and variables -> Actions.

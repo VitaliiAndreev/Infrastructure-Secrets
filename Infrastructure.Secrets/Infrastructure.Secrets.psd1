@@ -20,14 +20,14 @@
     )
     CmdletsToExport   = @()
     AliasesToExport   = @()
-    # Infrastructure.Common provides Invoke-ModuleInstall, used by
+    # PowerShell.Common provides Invoke-ModuleInstall, used by
     # Use-MicrosoftPowerShellSecretStoreProvider to install the SecretStore
     # stack. Declaring it here ensures it is available inside module function
     # bodies without a manual Import-Module at each call site.
     RequiredModules   = @(
         @{
-            ModuleName    = 'Infrastructure.Common'
-            ModuleVersion = '3.0.1'
+            ModuleName    = 'PowerShell.Common'
+            ModuleVersion = '6.0.0'
             GUID          = 'b7d3f2a1-4c9e-4f8d-a2b5-3e6d7f8a9b0c'
         }
     )

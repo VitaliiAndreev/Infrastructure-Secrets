@@ -214,7 +214,7 @@ for a consumer that only needs runtime reads/writes on a machine where the
 vault is already initialised — no vault-setup code runs.
 
 Steps added before `Register-SecretProvider`:
-1. Call `Invoke-ModuleInstall` (from `Infrastructure.Common`) for
+1. Call `Invoke-ModuleInstall` (from `PowerShell.Common`) for
    `Microsoft.PowerShell.SecretManagement`.
 2. Call `Invoke-ModuleInstall` for `Microsoft.PowerShell.SecretStore`.
 
@@ -224,7 +224,7 @@ one call. The inline NuGet provider guard currently in
 `Install-Module` and is handled by the consumer's bootstrap before any
 module in this family is loaded.
 
-`Infrastructure.Common` must be declared in `RequiredModules` in
+`PowerShell.Common` must be declared in `RequiredModules` in
 `Infrastructure.Secrets.psd1` so `Invoke-ModuleInstall` is available
 inside module function bodies without an explicit import at the call site.
 
@@ -245,7 +245,7 @@ Files changed:
   NuGet guard and module install loop (now owned by `Use-*Provider`);
   call `Use-MicrosoftPowerShellSecretStoreProvider` at start.
 - `Infrastructure.Secrets.psm1` — update dot-source path and export name.
-- `Infrastructure.Secrets.psd1` — add `Infrastructure.Common` to
+- `Infrastructure.Secrets.psd1` — add `PowerShell.Common` to
   `RequiredModules`; update `FunctionsToExport`; bump minor version.
 - `README.md` — rename everywhere.
 

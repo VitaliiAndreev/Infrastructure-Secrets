@@ -4,7 +4,7 @@ BeforeAll {
     . "$PSScriptRoot\..\..\Infrastructure.Secrets\Private\Register-SecretProvider.ps1"
     . "$PSScriptRoot\..\..\Infrastructure.Secrets\Public\Use-MicrosoftPowerShellSecretStoreProvider.ps1"
 
-    # Stubs for Infrastructure.Common and SecretManagement cmdlets not
+    # Stubs for PowerShell.Common and SecretManagement cmdlets not
     # installed in the test environment; mocked per-test where needed.
     function Invoke-ModuleInstall { param($ModuleName) }
     function Get-Secret { param($Vault, $Name, [switch] $AsPlainText) }
