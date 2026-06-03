@@ -39,6 +39,13 @@ $Script:SecretProvider = $null
 . "$PSScriptRoot\Private\Assert-DispatchPreconditions.ps1"
 . "$PSScriptRoot\Private\Register-SecretProvider.ps1"
 
+# Maintenance utility - intentionally not in Export-ModuleMember so a
+# stray `Import-Module Infrastructure.Secrets` does not surface a
+# destructive op via tab completion. Operator-facing exposure goes
+# through scripts\Clear-AllSecrets.ps1 (which dot-sources this file
+# directly), and through the menu entry that calls that runner.
+. "$PSScriptRoot\Private\Clear-AllSecrets.ps1"
+
 . "$PSScriptRoot\Public\Initialize-MicrosoftPowerShellSecretStoreVault.ps1"
 . "$PSScriptRoot\Public\Get-InfrastructureSecret.ps1"
 . "$PSScriptRoot\Public\Set-InfrastructureSecret.ps1"
